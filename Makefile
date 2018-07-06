@@ -87,7 +87,7 @@ argv_STEP = step7_interop
 js_STEP_TO_PROG =      js/$($(1)).js
 python_STEP_TO_PROG =  python/$($(1)).py
 cljs_STEP_TO_PROG =    cljs/src/miniMAL/$($(1)).cljs
-go_STEP_TO_PROG =    go/src/miniMAL/$($(1)).go
+go_STEP_TO_PROG =      go/$($(1))
 
 ##########################################################
 # Most of the rest of this file comes from mal/Makefile
