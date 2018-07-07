@@ -138,19 +138,6 @@ func evalAST(ast interface{}, env *Environment) (interface{}, error) {
 	}
 }
 
-func apply(
-	f interface{},
-	args []interface{},
-	env *Environment,
-) (interface{}, error) {
-	switch f := f.(type) {
-	case func(args []interface{}) (interface{}, error):
-		return f(args)
-	default:
-		return nil, fmt.Errorf("Non callable atom %T", f)
-	}
-}
-
 // EVAL returns an atom after evaluating an atom entry
 func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 	// fmt.Printf("%v\n", ast)
@@ -203,7 +190,13 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 			}
 			switch elements := elements.(type) {
 			case []interface{}:
-				return apply(elements[0], elements[1:], env)
+				f := elements[0]
+				switch f := f.(type) {
+				case func([]interface{}) (interface{}, error):
+					return f(elements[1:])
+				default:
+					return nil, fmt.Errorf("Non callable atom %T", f)
+				}
 			default:
 				return nil, nil // FIXME
 			}
