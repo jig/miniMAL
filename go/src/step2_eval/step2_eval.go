@@ -17,17 +17,38 @@ type Environment map[string]interface{}
 
 var SymbolTable = Environment{
 	"+": func(args []interface{}) (interface{}, error) {
-		return args[0].(float64) + args[1].(float64), nil
+		result := float64(0)
+		for _, v := range args {
+			result += v.(float64)
+		}
+		return result, nil
 	},
 	"*": func(args []interface{}) (interface{}, error) {
-		return args[0].(float64) * args[1].(float64), nil
+		result := float64(1)
+		for _, v := range args {
+			result *= v.(float64)
+		}
+		return result, nil
 	},
 	"-": func(args []interface{}) (interface{}, error) {
+		if err := assertArgNum(args, 2); err != nil {
+			return nil, err
+		}
 		return args[0].(float64) - args[1].(float64), nil
 	},
 	"/": func(args []interface{}) (interface{}, error) {
+		if err := assertArgNum(args, 2); err != nil {
+			return nil, err
+		}
 		return args[0].(float64) / args[1].(float64), nil
 	},
+}
+
+func assertArgNum(args []interface{}, n int) error {
+	if len(args) != n {
+		return fmt.Errorf("Invalid number of arguments")
+	}
+	return nil
 }
 
 // READ parses a JSON encoded string and unmarshals it to an Atom
