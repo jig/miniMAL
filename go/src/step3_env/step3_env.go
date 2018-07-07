@@ -18,6 +18,7 @@ type Environment struct {
 	parent *Environment
 }
 
+// BaseSymbolTable returns a symbol table with predefined contents
 func BaseSymbolTable() *Environment {
 	return &Environment{
 		scope: map[string]interface{}{
@@ -58,6 +59,7 @@ func assertArgNum(args []interface{}, n int) error {
 	return nil
 }
 
+// NewSymbolTable creates a copy of an environtment table
 func NewSymbolTable(parent *Environment) *Environment {
 	return &Environment{
 		scope:  map[string]interface{}{},
@@ -65,17 +67,19 @@ func NewSymbolTable(parent *Environment) *Environment {
 	}
 }
 
-func (e *Environment) Get(index string) (interface{}, bool) {
+// Get returns the value of a symbol
+func (e *Environment) Get(index string) (interface{}, error) {
 	value, ok := e.scope[index]
 	if !ok {
 		if e.parent == nil {
-			return nil, false
+			return nil, fmt.Errorf("Symbol %q undefined", index)
 		}
 		return e.parent.Get(index)
 	}
-	return value, true
+	return value, nil
 }
 
+// Set defines a new symbol
 func (e *Environment) Set(index string, value interface{}) (interface{}, error) {
 	e.scope[index] = value
 	return value, nil
@@ -124,9 +128,9 @@ func evalAST(ast interface{}, env *Environment) (interface{}, error) {
 		}
 		return outAST, nil
 	case string:
-		v, found := env.Get(ast)
-		if !found {
-			return nil, fmt.Errorf("Symbol %q undefined", ast)
+		v, err := env.Get(ast)
+		if err != nil {
+			return nil, err
 		}
 		return v, nil
 	default:
