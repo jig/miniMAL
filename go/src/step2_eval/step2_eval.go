@@ -166,10 +166,6 @@ func REPL(in []byte, env Environment) ([]byte, error) {
 }
 
 func main() {
-	// b, err := REPL([]byte(`["+", 5, ["*", 2, 3]]`), SymbolTable)
-	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
-	// os.Exit(0)
-
 	reader := bufio.NewReader(os.Stdin)
 	symbolTable := Environment{}
 	for symbol, atom := range SymbolTable {
