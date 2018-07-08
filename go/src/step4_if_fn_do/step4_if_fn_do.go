@@ -53,12 +53,9 @@ func BaseSymbolTable() *Environment {
 				if err := assertArgNum(args, 2); err != nil {
 					return nil, err
 				}
-				// "=" casts to integer
 				switch a := args[0].(type) {
 				case float64:
 					return a == args[1].(float64), nil
-				case int64:
-					return a == args[1].(int64), nil
 				case string:
 					return strings.Compare(a, args[1].(string)) == 0, nil
 				}
@@ -72,8 +69,6 @@ func BaseSymbolTable() *Environment {
 				switch a := args[0].(type) {
 				case float64:
 					return a < args[1].(float64), nil
-				case int64:
-					return a < args[1].(int64), nil
 				case string:
 					return strings.Compare(a, args[1].(string)) == -1, nil
 				default:
@@ -159,7 +154,7 @@ func READ(b []byte) (ast interface{}, err error) {
 	case '[':
 		ast = []interface{}{}
 	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-		ast = float64(0)
+		ast = float64(0) // FIXME: json decoding by default decodes numbers to float64. Change default behaviour to int64
 	case '"':
 		ast = ""
 	default:
@@ -185,23 +180,13 @@ func evalAST(ast interface{}, env *Environment) (interface{}, error) {
 		}
 		return outAST, nil
 	case string:
-		v, err := env.Get(ast)
-		if err != nil {
-			return nil, err
-		}
-		return v, nil
+		return env.Get(ast)
 	default:
 		return ast, nil
 	}
 }
 
 func bind(ast interface{}, env *Environment, expressions []interface{}) (*Environment, error) {
-	// Return new Env with symbols in ast bound to
-	// corresponding values in exprs
-	// env = Object.create(env)
-	// ast.some((a,i) => a == "&" ? env[ast[i+1]] = exprs.slice(i)
-	//                            : (env[a] = exprs[i], 0))
-	// return env
 	switch ast := ast.(type) {
 	case []interface{}:
 		newEnv := NewSymbolTable(env)
@@ -214,7 +199,7 @@ func bind(ast interface{}, env *Environment, expressions []interface{}) (*Enviro
 		}
 		return newEnv, nil
 	default:
-		return nil, fmt.Errorf("")
+		return nil, fmt.Errorf("Binding must receive an array")
 	}
 }
 
@@ -272,37 +257,28 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 				return EVAL(ast[2], newEnv)
 			}, nil
 		case "if":
-			condition, err := EVAL(ast[1], env)
+			evaledCondition, err := EVAL(ast[1], env)
 			if err != nil {
 				return nil, err
 			}
-			switch condition := condition.(type) {
+			var ifCondition bool
+			switch evaledCondition := evaledCondition.(type) {
 			case bool:
-				if condition {
-					return EVAL(ast[2], env)
-				}
-				return EVAL(ast[3], env)
-			case float64:
-				// FIXME: float64 cannot be compared reliably with == / !=
-				if condition != 0 {
-					return EVAL(ast[2], env)
-				}
-				return EVAL(ast[3], env)
-			case int64:
-				if condition != 0 {
-					return EVAL(ast[2], env)
-				}
-				return EVAL(ast[3], env)
+				ifCondition = evaledCondition
+			case float64: // FIXME: float64 cannot be compared reliably with == / !=
+				ifCondition = evaledCondition != 0
 			case nil:
-				return EVAL(ast[3], env)
+				ifCondition = false
 			case []interface{}:
-				if len(condition) > 0 {
-					return EVAL(ast[2], env)
-				}
-				return EVAL(ast[3], env)
+				ifCondition = len(evaledCondition) > 0
 			default:
-				return nil, fmt.Errorf("if requires a quasi boolean condition but got %T", condition)
+				return nil, fmt.Errorf("if requires a quasi boolean condition but got %T", evaledCondition)
 			}
+
+			if ifCondition {
+				return EVAL(ast[2], env)
+			}
+			return EVAL(ast[3], env)
 		case "do":
 			evaled, err := evalAST(ast[1:], env)
 			if err != nil {
@@ -322,6 +298,7 @@ func fnCall(ast interface{}, env *Environment) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	switch elements := elements.(type) {
 	case []interface{}:
 		f := elements[0]
