@@ -93,6 +93,21 @@ func BaseSymbolTable() *Environment {
 				}
 				return result, nil
 			},
+			// "read": func(args []interface{}) (interface{}, error) {
+			// 	if err := assertArgNumAtLeast(args, 1); err != nil {
+			// 		return nil, err
+			// 	}
+			// 	switch arg := args[0].(type) {
+			// 	case string:
+			// 		var result interface{}
+			// 		if err := json.Unmarshal([]byte(arg), result); err != nil {
+			// 			return nil, err
+			// 		}
+			// 		return result, nil
+			// 	default:
+			// 		return nil, fmt.Errorf("read argument must be a string but was %T", args[0])
+			// 	}
+			// },
 		},
 	}
 }
@@ -371,14 +386,18 @@ func REPL(in []byte, env *Environment) ([]byte, error) {
 }
 
 func main() {
-	// b, err := REPL([]byte(`["do", ["def", "a", 6], 7, ["+", "a", 8]]`), BaseSymbolTable())
+	symbolTable := BaseSymbolTable()
+
+	// b, err := REPL([]byte(`["do", ["def", "a", 6], 7, ["+", "a", 8]]`), symbolTable)
 	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
 	// os.Exit(0)
 
-	symbolTable := BaseSymbolTable()
-
 	// REPL([]byte(`["def", "sum2", ["fn", ["n", "acc"], ["if", ["=", "n", 0], "acc", ["sum2", ["-", "n", 1], ["+", "n", "acc"]]]]]`), symbolTable)
 	// b, err := REPL([]byte(`["sum2", 10, 0]`), symbolTable)
+	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
+	// os.Exit(0)
+
+	// b, err := REPL([]byte(`["read", "44"]`), symbolTable)
 	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
 	// os.Exit(0)
 
