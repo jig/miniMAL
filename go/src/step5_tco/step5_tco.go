@@ -203,6 +203,13 @@ func bind(ast interface{}, env *Environment, expressions []interface{}) (*Enviro
 	}
 }
 
+type tcoFN struct {
+	f          func(args []interface{}) (interface{}, error)
+	bodyAST    interface{}
+	env        *Environment
+	argSpecAST interface{}
+}
+
 // EVAL returns an atom after evaluating an atom entry
 func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 	for {
@@ -249,12 +256,17 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					ast = typedAST[2].([]interface{})
 					continue
 				case "fn":
-					return func(args []interface{}) (interface{}, error) {
-						newEnv, err := bind(typedAST[1], env, args)
-						if err != nil {
-							return nil, err
-						}
-						return EVAL(typedAST[2], newEnv)
+					return tcoFN{
+						f: func(args []interface{}) (interface{}, error) {
+							newEnv, err := bind(typedAST[1], env, args)
+							if err != nil {
+								return nil, err
+							}
+							return EVAL(typedAST[2], newEnv)
+						},
+						bodyAST:    typedAST[2],
+						env:        env,
+						argSpecAST: typedAST[1],
 					}, nil
 				case "if":
 					evaledCondition, err := EVAL(typedAST[1], env)
@@ -294,7 +306,8 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					continue
 				}
 			}
-			// default cases
+
+			// default cases for both switches
 			// -> fnCall(ast, env)
 			elements, err := evalAST(typedAST, env)
 			if err != nil {
@@ -306,13 +319,19 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 				f := elements[0]
 				switch f := f.(type) {
 				case func([]interface{}) (interface{}, error):
-					// apply:
 					return f(elements[1:])
+				case tcoFN:
+					ast = f.bodyAST.([]interface{})
+					env, err = bind(f.argSpecAST, f.env, elements[1:])
+					if err != nil {
+						return nil, err
+					}
+					continue
 				default:
 					return nil, fmt.Errorf("Non callable atom %T", f)
 				}
 			default:
-				return nil, nil // FIXME
+				return nil, fmt.Errorf("?? BOGUS %T", elements)
 			}
 		default:
 			return evalAST(ast, env)
