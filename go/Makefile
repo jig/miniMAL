@@ -11,7 +11,7 @@ export GOPATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 #####################
 
-SRCS = step1_read_print.go step2_eval.go step3_env.go step4_if_fn_do.go
+SRCS = step1_read_print.go step2_eval.go step3_env.go step4_if_fn_do.go step5_tco.go
 
 BINS = $(SRCS:%.go=%)
 
