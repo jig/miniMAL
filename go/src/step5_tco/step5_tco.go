@@ -93,21 +93,6 @@ func BaseSymbolTable() *Environment {
 				}
 				return result, nil
 			},
-			// "read": func(args []interface{}) (interface{}, error) {
-			// 	if err := assertArgNumAtLeast(args, 1); err != nil {
-			// 		return nil, err
-			// 	}
-			// 	switch arg := args[0].(type) {
-			// 	case string:
-			// 		var result interface{}
-			// 		if err := json.Unmarshal([]byte(arg), result); err != nil {
-			// 			return nil, err
-			// 		}
-			// 		return result, nil
-			// 	default:
-			// 		return nil, fmt.Errorf("read argument must be a string but was %T", args[0])
-			// 	}
-			// },
 		},
 	}
 }
@@ -309,15 +294,11 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					}
 					continue
 				case "do":
-					_, err := evalAST(typedAST[1:len(typedAST)-1], env)
+					evaled, err := evalAST(typedAST[1:], env)
 					if err != nil {
 						return nil, err
 					}
-					evaled, err := evalAST(typedAST[len(typedAST)-1], env)
-					if err != nil {
-						return nil, err
-					}
-					ast = evaled.([]interface{})
+					ast = evaled.([]interface{})[len(evaled.([]interface{}))-1]
 					continue
 				}
 			}
