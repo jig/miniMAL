@@ -280,11 +280,16 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					}
 					return EVAL(ast[3], env)
 				case "do":
-					evaled, err := evalAST(ast[1:], env)
+					_, err := evalAST(ast[1:len(ast)-1], env)
 					if err != nil {
 						return nil, err
 					}
-					return evaled.([]interface{})[len(ast)-2], nil
+					evaled, err := evalAST(ast[len(ast)-1], env)
+					if err != nil {
+						return nil, err
+					}
+					ast = evaled.([]interface{})
+					continue
 				}
 			}
 			// default cases
