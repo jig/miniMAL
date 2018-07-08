@@ -205,107 +205,111 @@ func bind(ast interface{}, env *Environment, expressions []interface{}) (*Enviro
 
 // EVAL returns an atom after evaluating an atom entry
 func EVAL(ast interface{}, env *Environment) (interface{}, error) {
-	// fmt.Printf("%v\n", ast)
-	switch ast := ast.(type) {
-	case []interface{}:
-		switch first := ast[0].(type) {
-		case string:
-			switch first {
-			case "def":
-				identifier, ok := ast[1].(string)
-				if !ok {
-					return nil, fmt.Errorf("Second argument in def must be a string name")
-				}
-				value, err := EVAL(ast[2], env)
-				if err != nil {
-					return nil, fmt.Errorf("Invalid def body")
-				}
-				env.Set(identifier, value)
-				return value, nil
-			case "let":
-				newEnv := NewSymbolTable(env)
-				variables, ok := ast[1].([]interface{})
-				if !ok {
-					return nil, fmt.Errorf("Second argument in let must be a list")
-				}
-				if len(variables)%2 != 0 {
-					return nil, fmt.Errorf("Second argument in let must be a list of pairs of name value")
-				}
-				for i := range variables {
-					if i%2 != 0 {
-						continue
-					}
-					value, err := EVAL(variables[i+1], newEnv)
-					if err != nil {
-						return nil, err
-					}
-					_, err = newEnv.Set(variables[i].(string), value)
-					if err != nil {
-						return nil, err
-					}
-				}
-				return EVAL(ast[2], newEnv)
-			case "fn":
-				return func(args []interface{}) (interface{}, error) {
-					newEnv, err := bind(ast[1], env, args)
-					if err != nil {
-						return nil, err
-					}
-					return EVAL(ast[2], newEnv)
-				}, nil
-			case "if":
-				evaledCondition, err := EVAL(ast[1], env)
-				if err != nil {
-					return nil, err
-				}
-				var ifCondition bool
-				switch evaledCondition := evaledCondition.(type) {
-				case bool:
-					ifCondition = evaledCondition
-				case float64: // FIXME: float64 cannot be compared reliably with == / !=
-					ifCondition = evaledCondition != 0
-				case nil:
-					ifCondition = false
-				case []interface{}:
-					ifCondition = len(evaledCondition) > 0
-				default:
-					return nil, fmt.Errorf("if requires a quasi boolean condition but got %T", evaledCondition)
-				}
-
-				if ifCondition {
-					return EVAL(ast[2], env)
-				}
-				return EVAL(ast[3], env)
-			case "do":
-				evaled, err := evalAST(ast[1:], env)
-				if err != nil {
-					return nil, err
-				}
-				return evaled.([]interface{})[len(ast)-2], nil
-			}
-		}
-		// default cases
-		// -> fnCall(ast, env)
-		elements, err := evalAST(ast, env)
-		if err != nil {
-			return nil, err
-		}
-
-		switch elements := elements.(type) {
+	for {
+		// fmt.Printf("%v\n", ast)
+		switch ast := ast.(type) {
 		case []interface{}:
-			f := elements[0]
-			switch f := f.(type) {
-			case func([]interface{}) (interface{}, error):
-				// apply:
-				return f(elements[1:])
+			switch first := ast[0].(type) {
+			case string:
+				switch first {
+				case "def":
+					identifier, ok := ast[1].(string)
+					if !ok {
+						return nil, fmt.Errorf("Second argument in def must be a string name")
+					}
+					value, err := EVAL(ast[2], env)
+					if err != nil {
+						return nil, fmt.Errorf("Invalid def body")
+					}
+					env.Set(identifier, value)
+					return value, nil
+				case "let":
+					newEnv := NewSymbolTable(env)
+					variables, ok := ast[1].([]interface{})
+					if !ok {
+						return nil, fmt.Errorf("Second argument in let must be a list")
+					}
+					if len(variables)%2 != 0 {
+						return nil, fmt.Errorf("Second argument in let must be a list of pairs of name value")
+					}
+					for i := range variables {
+						if i%2 != 0 {
+							continue
+						}
+						value, err := EVAL(variables[i+1], newEnv)
+						if err != nil {
+							return nil, err
+						}
+						_, err = newEnv.Set(variables[i].(string), value)
+						if err != nil {
+							return nil, err
+						}
+					}
+					env = newEnv
+					ast = ast[2].([]interface{})
+					continue
+				case "fn":
+					return func(args []interface{}) (interface{}, error) {
+						newEnv, err := bind(ast[1], env, args)
+						if err != nil {
+							return nil, err
+						}
+						return EVAL(ast[2], newEnv)
+					}, nil
+				case "if":
+					evaledCondition, err := EVAL(ast[1], env)
+					if err != nil {
+						return nil, err
+					}
+					var ifCondition bool
+					switch evaledCondition := evaledCondition.(type) {
+					case bool:
+						ifCondition = evaledCondition
+					case float64: // FIXME: float64 cannot be compared reliably with == / !=
+						ifCondition = evaledCondition != 0
+					case nil:
+						ifCondition = false
+					case []interface{}:
+						ifCondition = len(evaledCondition) > 0
+					default:
+						return nil, fmt.Errorf("if requires a quasi boolean condition but got %T", evaledCondition)
+					}
+
+					if ifCondition {
+						return EVAL(ast[2], env)
+					}
+					return EVAL(ast[3], env)
+				case "do":
+					evaled, err := evalAST(ast[1:], env)
+					if err != nil {
+						return nil, err
+					}
+					return evaled.([]interface{})[len(ast)-2], nil
+				}
+			}
+			// default cases
+			// -> fnCall(ast, env)
+			elements, err := evalAST(ast, env)
+			if err != nil {
+				return nil, err
+			}
+
+			switch elements := elements.(type) {
+			case []interface{}:
+				f := elements[0]
+				switch f := f.(type) {
+				case func([]interface{}) (interface{}, error):
+					// apply:
+					return f(elements[1:])
+				default:
+					return nil, fmt.Errorf("Non callable atom %T", f)
+				}
 			default:
-				return nil, fmt.Errorf("Non callable atom %T", f)
+				return nil, nil // FIXME
 			}
 		default:
-			return nil, nil // FIXME
+			return evalAST(ast, env)
 		}
-	default:
-		return evalAST(ast, env)
 	}
 }
 
