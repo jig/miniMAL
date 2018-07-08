@@ -207,17 +207,17 @@ func bind(ast interface{}, env *Environment, expressions []interface{}) (*Enviro
 func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 	for {
 		// fmt.Printf("%v\n", ast)
-		switch ast := ast.(type) {
+		switch typedAST := ast.(type) {
 		case []interface{}:
-			switch first := ast[0].(type) {
+			switch first := typedAST[0].(type) {
 			case string:
 				switch first {
 				case "def":
-					identifier, ok := ast[1].(string)
+					identifier, ok := typedAST[1].(string)
 					if !ok {
 						return nil, fmt.Errorf("Second argument in def must be a string name")
 					}
-					value, err := EVAL(ast[2], env)
+					value, err := EVAL(typedAST[2], env)
 					if err != nil {
 						return nil, fmt.Errorf("Invalid def body")
 					}
@@ -225,7 +225,7 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					return value, nil
 				case "let":
 					newEnv := NewSymbolTable(env)
-					variables, ok := ast[1].([]interface{})
+					variables, ok := typedAST[1].([]interface{})
 					if !ok {
 						return nil, fmt.Errorf("Second argument in let must be a list")
 					}
@@ -246,18 +246,18 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 						}
 					}
 					env = newEnv
-					ast = ast[2].([]interface{})
+					ast = typedAST[2].([]interface{})
 					continue
 				case "fn":
 					return func(args []interface{}) (interface{}, error) {
-						newEnv, err := bind(ast[1], env, args)
+						newEnv, err := bind(typedAST[1], env, args)
 						if err != nil {
 							return nil, err
 						}
-						return EVAL(ast[2], newEnv)
+						return EVAL(typedAST[2], newEnv)
 					}, nil
 				case "if":
-					evaledCondition, err := EVAL(ast[1], env)
+					evaledCondition, err := EVAL(typedAST[1], env)
 					if err != nil {
 						return nil, err
 					}
@@ -276,15 +276,17 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					}
 
 					if ifCondition {
-						return EVAL(ast[2], env)
+						ast = typedAST[2]
+					} else {
+						ast = typedAST[3]
 					}
-					return EVAL(ast[3], env)
+					continue
 				case "do":
-					_, err := evalAST(ast[1:len(ast)-1], env)
+					_, err := evalAST(typedAST[1:len(typedAST)-1], env)
 					if err != nil {
 						return nil, err
 					}
-					evaled, err := evalAST(ast[len(ast)-1], env)
+					evaled, err := evalAST(typedAST[len(typedAST)-1], env)
 					if err != nil {
 						return nil, err
 					}
@@ -294,7 +296,7 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 			}
 			// default cases
 			// -> fnCall(ast, env)
-			elements, err := evalAST(ast, env)
+			elements, err := evalAST(typedAST, env)
 			if err != nil {
 				return nil, err
 			}
@@ -318,30 +320,11 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 	}
 }
 
-// func fnCall(ast interface{}, env *Environment) (interface{}, error) {
-// 	elements, err := evalAST(ast, env)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	switch elements := elements.(type) {
-// 	case []interface{}:
-// 		f := elements[0]
-// 		switch f := f.(type) {
-// 		case func([]interface{}) (interface{}, error):
-// 			// apply:
-// 			return f(elements[1:])
-// 		default:
-// 			return nil, fmt.Errorf("Non callable atom %T", f)
-// 		}
-// 	default:
-// 		return nil, nil // FIXME
-// 	}
-// }
-
 // PRINT prints the atom out
 func PRINT(ast interface{}) ([]byte, error) {
 	return json.Marshal(ast)
+	// spew.Dump(ast)
+	// return nil, nil
 }
 
 // REPL calls READ -> EVAL -> PRINT
@@ -373,8 +356,14 @@ func main() {
 	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
 	// os.Exit(0)
 
-	reader := bufio.NewReader(os.Stdin)
 	symbolTable := BaseSymbolTable()
+
+	// REPL([]byte(`["def", "sum2", ["fn", ["n", "acc"], ["if", ["=", "n", 0], "acc", ["sum2", ["-", "n", 1], ["+", "n", "acc"]]]]]`), symbolTable)
+	// b, err := REPL([]byte(`["sum2", 10, 0]`), symbolTable)
+	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
+	// os.Exit(0)
+
+	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("> ")
 		line, err := reader.ReadString('\n')
