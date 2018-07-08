@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
@@ -20,39 +21,26 @@ type Environment struct {
 }
 
 // BaseSymbolTable returns a symbol table with predefined contents
-func BaseSymbolTable() *Environment {
-	return &Environment{
+func BaseSymbolTable() (env *Environment) {
+	env = &Environment{
 		Scope: map[string]interface{}{
-			"+": func(args []interface{}) (interface{}, error) {
+			"+": argsVariadic(func(args []interface{}) (interface{}, error) {
 				result := float64(0)
 				for _, v := range args {
 					result += v.(float64)
 				}
 				return result, nil
-			},
-			"*": func(args []interface{}) (interface{}, error) {
+			}),
+			"*": argsVariadic(func(args []interface{}) (interface{}, error) {
 				result := float64(1)
 				for _, v := range args {
 					result *= v.(float64)
 				}
 				return result, nil
-			},
-			"-": func(args []interface{}) (interface{}, error) {
-				if err := assertArgNum(args, 2); err != nil {
-					return nil, err
-				}
-				return args[0].(float64) - args[1].(float64), nil
-			},
-			"/": func(args []interface{}) (interface{}, error) {
-				if err := assertArgNum(args, 2); err != nil {
-					return nil, err
-				}
-				return args[0].(float64) / args[1].(float64), nil
-			},
-			"=": func(args []interface{}) (interface{}, error) {
-				if err := assertArgNum(args, 2); err != nil {
-					return nil, err
-				}
+			}),
+			"-": args2(func(args []interface{}) (interface{}, error) { return args[0].(float64) - args[1].(float64), nil }),
+			"/": args2(func(args []interface{}) (interface{}, error) { return args[0].(float64) / args[1].(float64), nil }),
+			"=": args2(func(args []interface{}) (interface{}, error) {
 				switch a := args[0].(type) {
 				case float64:
 					return a == args[1].(float64), nil
@@ -61,11 +49,8 @@ func BaseSymbolTable() *Environment {
 				}
 				// FIXME: this is not efficient, used only when aan array is to be compared
 				return reflect.DeepEqual(args[0], args[1]), nil
-			},
-			"<": func(args []interface{}) (interface{}, error) {
-				if err := assertArgNum(args, 2); err != nil {
-					return nil, err
-				}
+			}),
+			"<": args2(func(args []interface{}) (interface{}, error) {
 				switch a := args[0].(type) {
 				case float64:
 					return a < args[1].(float64), nil
@@ -74,14 +59,9 @@ func BaseSymbolTable() *Environment {
 				default:
 					return nil, fmt.Errorf("Cannot compare types %T", a)
 				}
-			},
-			"list": func(args []interface{}) (interface{}, error) {
-				return args, nil
-			},
-			"map": func(args []interface{}) (interface{}, error) {
-				if err := assertArgNumAtLeast(args, 1); err != nil {
-					return nil, err
-				}
+			}),
+			"list": argsVariadic(func(args []interface{}) (interface{}, error) { return args, nil }),
+			"map": args1(func(args []interface{}) (interface{}, error) {
 				result := make([]interface{}, len(args)-1)
 				for i, value := range args[1:] {
 					var err error
@@ -92,23 +72,79 @@ func BaseSymbolTable() *Environment {
 					}
 				}
 				return result, nil
-			},
+			}),
+
+			// FILESYSTEM
+			"eval": args1(func(args []interface{}) (interface{}, error) {
+				return EVAL(args[0], env)
+			}),
+			"read":  args1(functionRead),
+			"slurp": args1(functionSlurp),
+			"load": args1(func(args []interface{}) (interface{}, error) {
+				// functionLoad reads an AST from file
+				fileContents, err := functionSlurp(args)
+				if err != nil {
+					return nil, err
+				}
+
+				ast, err := functionRead([]interface{}{fileContents.(string)})
+				if err != nil {
+					return nil, err
+				}
+				return EVAL(ast, env)
+			}),
+			"ARGS": os.Args[1:],
 		},
 	}
+	return env
 }
 
-func assertArgNum(args []interface{}, n int) error {
-	if len(args) != n {
-		return fmt.Errorf("Invalid number of arguments")
+// functionRead reads a string
+func functionRead(args []interface{}) (interface{}, error) {
+	switch arg := args[0].(type) {
+	case string:
+		return READ([]byte(arg))
+	default:
+		return nil, fmt.Errorf("read argument must be a string but was %T", args[0])
 	}
-	return nil
 }
 
-func assertArgNumAtLeast(args []interface{}, n int) error {
-	if len(args) < n {
-		return fmt.Errorf("Insuficient number of arguments")
+// functionSlurp reads a file
+func functionSlurp(args []interface{}) (interface{}, error) {
+	switch fileName := args[0].(type) {
+	case string:
+		contents, err := ioutil.ReadFile(fileName)
+		if err != nil {
+			return nil, err
+		}
+		return string(contents), nil
+	default:
+		return nil, fmt.Errorf("slurp requires a filename")
 	}
-	return nil
+}
+
+func args1(f func(args []interface{}) (interface{}, error)) func(args []interface{}) (interface{}, error) {
+	return func(args []interface{}) (interface{}, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("wrong number of arguments (%d instead of 1)", len(args))
+		}
+		return f(args)
+	}
+}
+
+func args2(f func(args []interface{}) (interface{}, error)) func(args []interface{}) (interface{}, error) {
+	return func(args []interface{}) (interface{}, error) {
+		if len(args) != 2 {
+			return nil, fmt.Errorf("wrong number of arguments (%d instead of 2)", len(args))
+		}
+		return f(args)
+	}
+}
+
+func argsVariadic(f func(args []interface{}) (interface{}, error)) func(args []interface{}) (interface{}, error) {
+	return func(args []interface{}) (interface{}, error) {
+		return f(args)
+	}
 }
 
 // NewSymbolTable creates a copy of an environtment table
@@ -230,6 +266,8 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					}
 					env.Set(identifier, value)
 					return value, nil
+				case "`":
+					return typedAST[1], nil
 				case "let":
 					newEnv := NewSymbolTable(env)
 					variables, ok := typedAST[1].([]interface{})
@@ -294,15 +332,11 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					}
 					continue
 				case "do":
-					_, err := evalAST(typedAST[1:len(typedAST)-1], env)
+					evaled, err := evalAST(typedAST[1:], env)
 					if err != nil {
 						return nil, err
 					}
-					evaled, err := evalAST(typedAST[len(typedAST)-1], env)
-					if err != nil {
-						return nil, err
-					}
-					ast = evaled.([]interface{})
+					ast = evaled.([]interface{})[len(evaled.([]interface{}))-1]
 					continue
 				}
 			}
@@ -383,6 +417,14 @@ func main() {
 	// os.Exit(0)
 
 	// b, err := REPL([]byte(`["read", "44"]`), symbolTable)
+	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
+	// os.Exit(0)
+
+	// b, err := REPL([]byte(`["do", ["do", 1, 2]]`), symbolTable)
+	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
+	// os.Exit(0)
+
+	// b, err := REPL([]byte(`"ARGS"`), symbolTable)
 	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
 	// os.Exit(0)
 
