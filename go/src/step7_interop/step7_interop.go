@@ -93,10 +93,41 @@ func BaseSymbolTable() (env *Environment) {
 				}
 				return EVAL(ast, env)
 			}),
-			"ARGS": os.Args[1:],
+			"ARGS":    os.Args[1:],
+			"prn":     argsVariadic(functionPrn),
+			"println": argsVariadic(functionPrintln),
 		},
 	}
 	return env
+}
+
+func functionPrn(args []interface{}) (interface{}, error) {
+	for _, arg := range args {
+		b, err := PRINT(arg)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Print(string(b))
+	}
+	fmt.Println()
+	return nil, nil
+}
+
+func functionPrintln(args []interface{}) (interface{}, error) {
+	for _, arg := range args {
+		switch arg := arg.(type) {
+		case string:
+			fmt.Print(arg)
+		default:
+			b, err := PRINT(arg)
+			if err != nil {
+				return nil, err
+			}
+			fmt.Print(string(b))
+		}
+	}
+	fmt.Println()
+	return nil, nil
 }
 
 // functionRead reads a string
@@ -249,12 +280,13 @@ type tcoFN struct {
 // EVAL returns an atom after evaluating an atom entry
 func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 	for {
-		// fmt.Printf("%v\n", ast)
 		switch typedAST := ast.(type) {
 		case []interface{}:
 			switch first := typedAST[0].(type) {
 			case string:
 				switch first {
+
+				// apply
 				case "def":
 					identifier, ok := typedAST[1].(string)
 					if !ok {
@@ -268,6 +300,21 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					return value, nil
 				case "`":
 					return typedAST[1], nil
+				case "fn":
+					return tcoFN{
+						f: func(args []interface{}) (interface{}, error) {
+							newEnv, err := bind(typedAST[1], env, args)
+							if err != nil {
+								return nil, err
+							}
+							return EVAL(typedAST[2], newEnv)
+						},
+						bodyAST:    typedAST[2],
+						env:        env,
+						argSpecAST: typedAST[1],
+					}, nil
+
+				// TCO
 				case "let":
 					newEnv := NewSymbolTable(env)
 					variables, ok := typedAST[1].([]interface{})
@@ -292,20 +339,7 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					}
 					env = newEnv
 					ast = typedAST[2].([]interface{})
-					continue
-				case "fn":
-					return tcoFN{
-						f: func(args []interface{}) (interface{}, error) {
-							newEnv, err := bind(typedAST[1], env, args)
-							if err != nil {
-								return nil, err
-							}
-							return EVAL(typedAST[2], newEnv)
-						},
-						bodyAST:    typedAST[2],
-						env:        env,
-						argSpecAST: typedAST[1],
-					}, nil
+					goto contTCO
 				case "if":
 					evaledCondition, err := EVAL(typedAST[1], env)
 					if err != nil {
@@ -330,14 +364,16 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					} else {
 						ast = typedAST[3]
 					}
-					continue
+					goto contTCO
 				case "do":
-					evaled, err := evalAST(typedAST[1:], env)
-					if err != nil {
-						return nil, err
+					if len(typedAST) > 2 {
+						_, err := evalAST(typedAST[1:len(typedAST)-1], env)
+						if err != nil {
+							return nil, err
+						}
 					}
-					ast = evaled.([]interface{})[len(evaled.([]interface{}))-1]
-					continue
+					ast = typedAST[len(typedAST)-1]
+					goto contTCO
 				}
 			}
 
@@ -360,7 +396,7 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					if err != nil {
 						return nil, err
 					}
-					continue
+					goto contTCO
 				default:
 					return nil, fmt.Errorf("Non callable atom %T", f)
 				}
@@ -370,6 +406,7 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 		default:
 			return evalAST(ast, env)
 		}
+	contTCO:
 	}
 }
 
@@ -425,6 +462,10 @@ func main() {
 	// os.Exit(0)
 
 	// b, err := REPL([]byte(`"ARGS"`), symbolTable)
+	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
+	// os.Exit(0)
+
+	// b, err := REPL([]byte("[\"load\", [\"`\", \"/home/jig/git/src/github.com/jig/miniMAL/tests/incB.json\"]]"), symbolTable)
 	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
 	// os.Exit(0)
 
