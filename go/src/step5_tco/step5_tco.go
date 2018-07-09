@@ -59,7 +59,7 @@ func BaseSymbolTable() *Environment {
 				case string:
 					return strings.Compare(a, args[1].(string)) == 0, nil
 				}
-				// FIXME: this is not efficient, used only when aan array is to be compared
+				// FIXME: this is not efficient, used only when an array is to be compared
 				return reflect.DeepEqual(args[0], args[1]), nil
 			},
 			"<": func(args []interface{}) (interface{}, error) {
