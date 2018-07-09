@@ -498,7 +498,7 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 			return evalAST(ast, env)
 		}
 	contTCO:
-		fmt.Println("( '̀-'́) ", ast)
+		// fmt.Println("( '̀-'́) ", ast)
 	}
 }
 
