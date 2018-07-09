@@ -52,6 +52,9 @@ func BaseSymbolTable() (env *Environment) {
 			"-": args2(func(args []interface{}) (interface{}, error) { return args[0].(float64) - args[1].(float64), nil }),
 			"/": args2(func(args []interface{}) (interface{}, error) { return args[0].(float64) / args[1].(float64), nil }),
 			"=": args2(func(args []interface{}) (interface{}, error) {
+				if reflect.ValueOf(args[0]).Type() != reflect.ValueOf(args[1]).Type() {
+					return false, nil
+				}
 				switch a := args[0].(type) {
 				case float64:
 					return a == args[1].(float64), nil
@@ -68,7 +71,37 @@ func BaseSymbolTable() (env *Environment) {
 				case string:
 					return strings.Compare(a, args[1].(string)) == -1, nil
 				default:
-					return nil, fmt.Errorf("Cannot compare types %T", a)
+					return nil, fmt.Errorf("Cannot compare type %T", a)
+				}
+			}),
+			"<=": args2(func(args []interface{}) (interface{}, error) {
+				switch a := args[0].(type) {
+				case float64:
+					return a <= args[1].(float64), nil
+				case string:
+					return strings.Compare(a, args[1].(string)) != 1, nil
+				default:
+					return nil, fmt.Errorf("Cannot compare type %T", a)
+				}
+			}),
+			">": args2(func(args []interface{}) (interface{}, error) {
+				switch a := args[0].(type) {
+				case float64:
+					return a > args[1].(float64), nil
+				case string:
+					return strings.Compare(a, args[1].(string)) == 1, nil
+				default:
+					return nil, fmt.Errorf("Cannot compare type %T", a)
+				}
+			}),
+			">=": args2(func(args []interface{}) (interface{}, error) {
+				switch a := args[0].(type) {
+				case float64:
+					return a >= args[1].(float64), nil
+				case string:
+					return strings.Compare(a, args[1].(string)) != -1, nil
+				default:
+					return nil, fmt.Errorf("Cannot compare type %T", a)
 				}
 			}),
 			"list": argsVariadic(func(args []interface{}) (interface{}, error) { return args, nil }),
@@ -105,6 +138,8 @@ func BaseSymbolTable() (env *Environment) {
 				return EVAL(ast, env)
 			}),
 			"ARGS":    os.Args[1:],
+			"str":     argsVariadic(functionStr),
+			"pr-str":  argsVariadic(functionPrStr),
 			"prn":     argsVariadic(functionPrn),
 			"println": argsVariadic(functionPrintln),
 
@@ -126,7 +161,7 @@ func functionCount(args []interface{}) (interface{}, error) {
 	if !ok {
 		return nil, fmt.Errorf("Not a list")
 	}
-	return len(elements), nil
+	return float64(len(elements)), nil
 }
 
 func functionEmptyQ(args []interface{}) (interface{}, error) {
@@ -134,35 +169,55 @@ func functionEmptyQ(args []interface{}) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	return count.(int) == 0, nil
+	return count.(float64) == 0, nil
+}
+
+func functionStr(args []interface{}) (interface{}, error) {
+	result := ""
+	for _, arg := range args {
+		result += fmt.Sprintf("%v", arg)
+	}
+	return result, nil
+}
+
+func functionPrStr(args []interface{}) (interface{}, error) {
+	strs := []string{}
+	for _, arg := range args {
+		switch arg := arg.(type) {
+		case string:
+			strs = append(strs, fmt.Sprintf("%q", arg))
+		case []interface{}:
+			r, err := functionPrStr(arg)
+			if err != nil {
+				return nil, err
+			}
+			strs = append(strs, r.(string))
+		default:
+			strs = append(strs, fmt.Sprintf("%v", arg))
+		}
+	}
+	return strings.Join(strs, " "), nil
 }
 
 func functionPrn(args []interface{}) (interface{}, error) {
+	strs := []string{}
 	for _, arg := range args {
-		b, err := PRINT(arg)
+		b, err := json.Marshal(arg)
 		if err != nil {
 			return nil, err
 		}
-		fmt.Print(string(b))
+		strs = append(strs, string(b))
 	}
-	fmt.Println()
+	fmt.Println(strings.Join(strs, " "))
 	return nil, nil
 }
 
 func functionPrintln(args []interface{}) (interface{}, error) {
-	for _, arg := range args {
-		switch arg := arg.(type) {
-		case string:
-			fmt.Print(arg)
-		default:
-			b, err := PRINT(arg)
-			if err != nil {
-				return nil, err
-			}
-			fmt.Print(string(b))
-		}
+	str, err := functionStr(args)
+	if err != nil {
+		return nil, err
 	}
-	fmt.Println()
+	fmt.Println(str)
 	return nil, nil
 }
 
@@ -446,6 +501,8 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 						ifCondition = false
 					case []interface{}:
 						ifCondition = len(evaledCondition) > 0
+					case string:
+						ifCondition = evaledCondition != ""
 					default:
 						return nil, fmt.Errorf("if requires a quasi boolean condition but got %T", evaledCondition)
 					}
@@ -577,6 +634,10 @@ func main() {
 	// 	fmt.Printf("VALUE: %s\n", b)
 	// }
 	// fmt.Println(symbolTable.Dump())
+	// os.Exit(0)
+
+	// b, err := REPL([]byte("[\"prn\", [\"list\", 1, 2, [\"`\", \"abc\"], [\"`\", \"\\\"\"]], [\"`\", \"def\"]]"), symbolTable)
+	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
 	// os.Exit(0)
 
 	reader := bufio.NewReader(os.Stdin)
