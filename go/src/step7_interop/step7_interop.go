@@ -20,6 +20,17 @@ type Environment struct {
 	Parent *Environment
 }
 
+func (env *Environment) Dump() string {
+	str := ""
+	if env.Parent != nil {
+		str = env.Parent.Dump()
+	}
+	for k, _ := range env.Scope {
+		str += k + " "
+	}
+	return str + "\n"
+}
+
 // BaseSymbolTable returns a symbol table with predefined contents
 func BaseSymbolTable() (env *Environment) {
 	env = &Environment{
@@ -96,9 +107,34 @@ func BaseSymbolTable() (env *Environment) {
 			"ARGS":    os.Args[1:],
 			"prn":     argsVariadic(functionPrn),
 			"println": argsVariadic(functionPrintln),
+
+			"list?":  args1(functionListQ),
+			"count":  args1(functionCount),
+			"empty?": args1(functionEmptyQ),
 		},
 	}
 	return env
+}
+
+func functionListQ(args []interface{}) (interface{}, error) {
+	_, ok := args[0].([]interface{})
+	return ok, nil
+}
+
+func functionCount(args []interface{}) (interface{}, error) {
+	elements, ok := args[0].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("Not a list")
+	}
+	return len(elements), nil
+}
+
+func functionEmptyQ(args []interface{}) (interface{}, error) {
+	count, err := functionCount(args)
+	if err != nil {
+		return nil, err
+	}
+	return count.(int) == 0, nil
 }
 
 func functionPrn(args []interface{}) (interface{}, error) {
@@ -253,7 +289,7 @@ func evalAST(ast interface{}, env *Environment) (interface{}, error) {
 	}
 }
 
-func bind(ast interface{}, env *Environment, expressions []interface{}) (*Environment, error) {
+func envBind(ast interface{}, env *Environment, expressions []interface{}) (*Environment, error) {
 	switch ast := ast.(type) {
 	case []interface{}:
 		newEnv := NewSymbolTable(env)
@@ -280,6 +316,7 @@ type tcoFN struct {
 // EVAL returns an atom after evaluating an atom entry
 func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 	for {
+		// fmt.Println("(ง'̀-'́)ง", ast)
 		switch typedAST := ast.(type) {
 		case []interface{}:
 			switch first := typedAST[0].(type) {
@@ -290,20 +327,24 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 				case "def":
 					identifier, ok := typedAST[1].(string)
 					if !ok {
-						return nil, fmt.Errorf("Second argument in def must be a string name")
+						return nil, fmt.Errorf("Second argument in def %q must be a string name", typedAST[1])
 					}
 					value, err := EVAL(typedAST[2], env)
 					if err != nil {
-						return nil, fmt.Errorf("Invalid def body")
+						// return nil, fmt.Errorf("Invalid def body for def %q", typedAST[1])
+						return nil, err
 					}
 					env.Set(identifier, value)
 					return value, nil
 				case "`":
 					return typedAST[1], nil
 				case "fn":
+					if len(typedAST) != 3 {
+						return nil, fmt.Errorf("fn need 2 arguments (found %d)", len(typedAST))
+					}
 					return tcoFN{
 						f: func(args []interface{}) (interface{}, error) {
-							newEnv, err := bind(typedAST[1], env, args)
+							newEnv, err := envBind(typedAST[1], env, args)
 							if err != nil {
 								return nil, err
 							}
@@ -391,8 +432,12 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 				case func([]interface{}) (interface{}, error):
 					return f(elements[1:])
 				case tcoFN:
-					ast = f.bodyAST.([]interface{})
-					env, err = bind(f.argSpecAST, f.env, elements[1:])
+					if f.bodyAST == nil {
+						ast = nil
+					} else {
+						ast = f.bodyAST.([]interface{})
+					}
+					env, err = envBind(f.argSpecAST, f.env, elements[1:])
 					if err != nil {
 						return nil, err
 					}
@@ -465,8 +510,15 @@ func main() {
 	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
 	// os.Exit(0)
 
-	// b, err := REPL([]byte("[\"load\", [\"`\", \"/home/jig/git/src/github.com/jig/miniMAL/tests/incB.json\"]]"), symbolTable)
-	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
+	// fmt.Println(symbolTable.Dump())
+	// REPL([]byte(`["def", "~", ["fn", ["a"], null]]`), symbolTable)
+	// b, err := REPL([]byte("[\"load\", [\"`\", \"/home/jig/git/src/github.com/jig/miniMAL/go/src/core.jsonot\"]]"), symbolTable)
+	// fmt.Println(symbolTable.Dump())
+	// if err != nil {
+	// 	fmt.Printf("ERROR: %v\n", err)
+	// } else {
+	// 	fmt.Printf("VALUE: %s\n", b)
+	// }
 	// os.Exit(0)
 
 	reader := bufio.NewReader(os.Stdin)
