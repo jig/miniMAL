@@ -1,9 +1,44 @@
-["do",
-["def", "inc4", ["fn", ["a"], ["+", 4, "a"]]],
-["def", "inc5", ["fn", ["a"],
-  ["+", 5, "a"]]],
-
-["prn", ["`", "incB.json finished"]],
-["`", "incB.json return string"]
+[
+  "do",
+  [
+    "def",
+    "inc4",
+    [
+      "fn",
+      [
+        "a"
+      ],
+      [
+        "+",
+        4,
+        "a"
+      ]
+    ]
+  ],
+  [
+    "def",
+    "inc5",
+    [
+      "fn",
+      [
+        "a"
+      ],
+      [
+        "+",
+        5,
+        "a"
+      ]
+    ]
+  ],
+  [
+    "prn",
+    [
+      "`",
+      "incB.json finished"
+    ]
+  ],
+  [
+    "`",
+    "incB.json return string"
+  ]
 ]
-
