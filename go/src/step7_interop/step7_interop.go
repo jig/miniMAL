@@ -321,9 +321,27 @@ type tcoFN struct {
 	argSpecAST interface{}
 }
 
+// type SomeType struct {
+// 	A string
+// 	I int
+// }
+
+// type Getter interface {
+// 	Get(string) (interface{}, error)
+// }
+
+// type Setter interface {
+// 	Set(string, interface{}) error
+// }
+
+// type Mapper interface {
+// 	Getter
+// 	Setter
+// }
+
 // EVAL returns an atom after evaluating an atom entry
 func EVAL(ast interface{}, env *Environment) (interface{}, error) {
-	fmt.Println("(ง'̀-'́)ง", ast)
+	// fmt.Println("(ง'̀-'́)ง", ast)
 	for {
 		switch typedAST := ast.(type) {
 		case []interface{}:
@@ -344,8 +362,32 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					}
 					env.Set(identifier, value)
 					return value, nil
-				case "`":
+				case "`": // quote
 					return typedAST[1], nil
+				// case ".-": // get/set
+				// 	elements, err := evalAST(typedAST[1:], env)
+				// 	if err != nil {
+				// 		return nil, err
+				// 	}
+				// 	switch elements := elements.(type) {
+				// 	case []interface{}:
+				// 		index, ok := elements[1].(string)
+				// 		if ok {
+				// 			return nil, fmt.Errorf("index in .- must be  string")
+				// 		}
+				// 		x, err := elements[0].(Mapper).Get(index)
+				// 		if err != nil {
+				// 			return nil, err
+				// 		}
+				// 		if len(elements) < 3 {
+				// 			// get
+				// 			return x, nil
+				// 		}
+				// 		// set
+				// 		elements[0].(Mapper).Set(index, elements[2])
+				// 		return elements[2], nil
+				// 	default:
+				// 	}
 				case "fn":
 					if len(typedAST) != 3 {
 						return nil, fmt.Errorf("fn need 2 arguments (found %d)", len(typedAST))
@@ -515,27 +557,27 @@ func main() {
 	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
 	// os.Exit(0)
 
-	fmt.Println(symbolTable.Dump())
-	b, err := REPL([]byte(`["def", "~", ["fn", ["a"], null]]`), symbolTable)
-	if err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-	} else {
-		fmt.Printf("VALUE: %s\n", b)
-	}
-	b, err = REPL([]byte("[\"load\", [\"`\", \"/home/jig/git/src/github.com/jig/miniMAL/go/src/core.jsonot\"]]"), symbolTable)
-	if err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-	} else {
-		fmt.Printf("VALUE: %s\n", b)
-	}
-	b, err = REPL([]byte("[\"if\", [\"=\", [\"count\", [\"list\", 1, 2, 3]], 3], [\"`\", \"yes\"], [\"`\", \"no\"]]"), symbolTable)
-	if err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-	} else {
-		fmt.Printf("VALUE: %s\n", b)
-	}
-	fmt.Println(symbolTable.Dump())
-	os.Exit(0)
+	// fmt.Println(symbolTable.Dump())
+	// b, err := REPL([]byte(`["def", "~", ["fn", ["a"], null]]`), symbolTable)
+	// if err != nil {
+	// 	fmt.Printf("ERROR: %v\n", err)
+	// } else {
+	// 	fmt.Printf("VALUE: %s\n", b)
+	// }
+	// b, err = REPL([]byte("[\"load\", [\"`\", \"/home/jig/git/src/github.com/jig/miniMAL/go/src/core.jsonot\"]]"), symbolTable)
+	// if err != nil {
+	// 	fmt.Printf("ERROR: %v\n", err)
+	// } else {
+	// 	fmt.Printf("VALUE: %s\n", b)
+	// }
+	// b, err = REPL([]byte("[\"if\", [\"=\", [\"count\", [\"list\", 1, 2, 3]], 3], [\"`\", \"yes\"], [\"`\", \"no\"]]"), symbolTable)
+	// if err != nil {
+	// 	fmt.Printf("ERROR: %v\n", err)
+	// } else {
+	// 	fmt.Printf("VALUE: %s\n", b)
+	// }
+	// fmt.Println(symbolTable.Dump())
+	// os.Exit(0)
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
