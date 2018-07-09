@@ -294,11 +294,19 @@ func envBind(ast interface{}, env *Environment, expressions []interface{}) (*Env
 	case []interface{}:
 		newEnv := NewSymbolTable(env)
 		for i, atom := range ast {
-			atomString, ok := atom.(string)
-			if !ok {
+			switch atom := atom.(type) {
+			default:
 				return nil, fmt.Errorf("Variable identifier must be a string (was %T)", atom)
+			case string:
+				if atom == "&" {
+					if i+1 == len(ast) {
+						return nil, fmt.Errorf("binding list cannot end with &")
+					}
+					newEnv.Set(ast[i+1].(string), expressions[i:])
+					return newEnv, nil
+				}
+				newEnv.Set(atom, expressions[i])
 			}
-			newEnv.Set(atomString, expressions[i])
 		}
 		return newEnv, nil
 	default:
@@ -341,12 +349,6 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 				case "fn":
 					if len(typedAST) != 3 {
 						return nil, fmt.Errorf("fn need 2 arguments (found %d)", len(typedAST))
-					}
-					switch typedAST[2].(type) {
-					default:
-						return nil, fmt.Errorf("fn with unsupported bodyAST of type %[1]T (%[1]v)", typedAST[2])
-					case nil:
-					case []interface{}:
 					}
 					return tcoFN{
 						f: func(args []interface{}) (interface{}, error) {
@@ -438,14 +440,7 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 				case func([]interface{}) (interface{}, error):
 					return f(elements[1:])
 				case tcoFN:
-					switch bodyAST := f.bodyAST.(type) {
-					case nil:
-						ast = nil
-					case []interface{}:
-						ast = bodyAST
-					default:
-						return nil, fmt.Errorf("unsupported bodyAST of type %[1]T (%[1]v)", f.bodyAST)
-					}
+					ast = f.bodyAST
 					env, err = envBind(f.argSpecAST, f.env, elements[1:])
 					if err != nil {
 						return nil, err
