@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"reflect"
 	"strings"
@@ -137,18 +138,70 @@ func BaseSymbolTable() (env *Environment) {
 				}
 				return EVAL(ast, env)
 			}),
-			"ARGS":    os.Args[1:],
 			"str":     argsVariadic(functionStr),
 			"pr-str":  argsVariadic(functionPrStr),
 			"prn":     argsVariadic(functionPrn),
 			"println": argsVariadic(functionPrintln),
-
-			"list?":  args1(functionListQ),
-			"count":  args1(functionCount),
-			"empty?": args1(functionEmptyQ),
+			"print":   argsVariadic(functionPrint),
+			"list?":   args1(functionListQ),
+			"count":   args1(functionCount),
+			"empty?":  args1(functionEmptyQ),
+			"string?": args1(functionStringQ),
+			"first":   args1(functionFirst),
+			"last":    args1(functionLast),
+			"nth":     args2(functionNth),
 		},
 	}
 	return env
+}
+
+func functionFirst(args []interface{}) (interface{}, error) {
+	switch arg0 := args[0].(type) {
+	case []interface{}:
+		l := len(arg0)
+		if l == 0 {
+			return nil, nil
+		}
+		return arg0[0], nil
+	default:
+		return nil, fmt.Errorf("first argument must be a list")
+	}
+}
+
+func functionLast(args []interface{}) (interface{}, error) {
+	switch arg0 := args[0].(type) {
+	case []interface{}:
+		l := len(arg0)
+		if l == 0 {
+			return nil, nil
+		}
+		return arg0[l-1], nil
+	default:
+		return nil, fmt.Errorf("last argument must be a list")
+	}
+}
+
+func functionNth(args []interface{}) (interface{}, error) {
+	switch n := args[1].(type) {
+	case float64:
+		switch arg0 := args[0].(type) {
+		case []interface{}:
+			l := len(arg0)
+			if l < int(n) {
+				return nil, nil
+			}
+			return arg0[int(n)], nil
+		default:
+			return nil, fmt.Errorf("nth second argument must be a list")
+		}
+	default:
+		return nil, fmt.Errorf("nth first argument must be a number")
+	}
+}
+
+func functionStringQ(args []interface{}) (interface{}, error) {
+	_, ok := args[0].(string)
+	return ok, nil
 }
 
 func functionListQ(args []interface{}) (interface{}, error) {
@@ -173,28 +226,36 @@ func functionEmptyQ(args []interface{}) (interface{}, error) {
 }
 
 func functionStr(args []interface{}) (interface{}, error) {
-	result := ""
+	strs := ""
 	for _, arg := range args {
-		result += fmt.Sprintf("%v", arg)
+		switch arg := arg.(type) {
+		case string:
+			strs += arg
+		case []interface{}:
+			a, err := functionStr(arg)
+			if err != nil {
+				return nil, err
+			}
+			strs += a.(string)
+		default:
+			bArg, err := json.Marshal(arg)
+			if err != nil {
+				return nil, err
+			}
+			strs += string(bArg)
+		}
 	}
-	return result, nil
+	return strs, nil
 }
 
 func functionPrStr(args []interface{}) (interface{}, error) {
 	strs := []string{}
 	for _, arg := range args {
-		switch arg := arg.(type) {
-		case string:
-			strs = append(strs, fmt.Sprintf("%q", arg))
-		case []interface{}:
-			r, err := functionPrStr(arg)
-			if err != nil {
-				return nil, err
-			}
-			strs = append(strs, r.(string))
-		default:
-			strs = append(strs, fmt.Sprintf("%v", arg))
+		bArg, err := json.Marshal(arg)
+		if err != nil {
+			return nil, err
 		}
+		strs = append(strs, string(bArg))
 	}
 	return strings.Join(strs, " "), nil
 }
@@ -218,6 +279,15 @@ func functionPrintln(args []interface{}) (interface{}, error) {
 		return nil, err
 	}
 	fmt.Println(str)
+	return nil, nil
+}
+
+func functionPrint(args []interface{}) (interface{}, error) {
+	str, err := functionStr(args)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Print(str)
 	return nil, nil
 }
 
@@ -394,10 +464,24 @@ type tcoFN struct {
 // 	Setter
 // }
 
+/*
+["def", "get", ["fn", ["a", "b"],
+    ["if", ["contains?", "a", "b"], [".-", "a", "b"], null]]],
+["def", "set", ["fn", ["a", "b", "c"],
+  ["do", [".-", "a", "b", "c"], "a"]]],
+["def", "first", ["fn", ["a"],
+  ["if", [">", [".-", "a", ["`", "length"]], 0],
+    ["nth", "a", 0],
+    null]]],
+["def", "last", ["fn", ["a"],
+  ["nth", "a", ["-", [".-", "a", ["`", "length"]], 1]]]],
+
+*/
+
 // EVAL returns an atom after evaluating an atom entry
 func EVAL(ast interface{}, env *Environment) (interface{}, error) {
-	// fmt.Println("(ง'̀-'́)ง", ast)
 	for {
+		// fmt.Println("(ง'̀-'́)ง", ast)
 		switch typedAST := ast.(type) {
 		case []interface{}:
 			switch first := typedAST[0].(type) {
@@ -419,30 +503,30 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					return value, nil
 				case "`": // quote
 					return typedAST[1], nil
-				// case ".-": // get/set
-				// 	elements, err := evalAST(typedAST[1:], env)
-				// 	if err != nil {
-				// 		return nil, err
-				// 	}
-				// 	switch elements := elements.(type) {
-				// 	case []interface{}:
-				// 		index, ok := elements[1].(string)
-				// 		if ok {
-				// 			return nil, fmt.Errorf("index in .- must be  string")
-				// 		}
-				// 		x, err := elements[0].(Mapper).Get(index)
-				// 		if err != nil {
-				// 			return nil, err
-				// 		}
-				// 		if len(elements) < 3 {
-				// 			// get
-				// 			return x, nil
-				// 		}
-				// 		// set
-				// 		elements[0].(Mapper).Set(index, elements[2])
-				// 		return elements[2], nil
-				// 	default:
-				// 	}
+				case ".-": // get/set
+					// elements, err := evalAST(typedAST[1:], env)
+					// if err != nil {
+					// 	return nil, err
+					// }
+					// switch elements := elements.(type) {
+					// case []interface{}:
+					// 	index, ok := elements[1].(string)
+					// 	if ok {
+					// 		return nil, fmt.Errorf("index in .- must be  string")
+					// 	}
+					// 	x, err := elements[0].(Mapper).Get(index)
+					// 	if err != nil {
+					// 		return nil, err
+					// 	}
+					// 	if len(elements) < 3 {
+					// 		// get
+					// 		return x, nil
+					// 	}
+					// 	// set
+					// 	elements[0].(Mapper).Set(index, elements[2])
+					// 	return elements[2], nil
+					// default:
+					// }
 				case "fn":
 					if len(typedAST) != 3 {
 						return nil, fmt.Errorf("fn need 2 arguments (found %d)", len(typedAST))
@@ -591,69 +675,44 @@ func REPL(in []byte, env *Environment) ([]byte, error) {
 }
 
 func main() {
-	symbolTable := BaseSymbolTable()
+	if len(os.Args) >= 2 {
+		symbolTable := BaseSymbolTable()
+		symbolTable.Set("ARGS", os.Args[2:])
 
-	// b, err := REPL([]byte(`["do", ["def", "a", 6], 7, ["+", "a", 8]]`), symbolTable)
-	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
-	// os.Exit(0)
-
-	// REPL([]byte(`["def", "sum2", ["fn", ["n", "acc"], ["if", ["=", "n", 0], "acc", ["sum2", ["-", "n", 1], ["+", "n", "acc"]]]]]`), symbolTable)
-	// b, err := REPL([]byte(`["sum2", 10, 0]`), symbolTable)
-	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
-	// os.Exit(0)
-
-	// b, err := REPL([]byte(`["read", "44"]`), symbolTable)
-	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
-	// os.Exit(0)
-
-	// b, err := REPL([]byte(`["do", ["do", 1, 2]]`), symbolTable)
-	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
-	// os.Exit(0)
-
-	// b, err := REPL([]byte(`"ARGS"`), symbolTable)
-	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
-	// os.Exit(0)
-
-	// fmt.Println(symbolTable.Dump())
-	// b, err := REPL([]byte(`["def", "~", ["fn", ["a"], null]]`), symbolTable)
-	// if err != nil {
-	// 	fmt.Printf("ERROR: %v\n", err)
-	// } else {
-	// 	fmt.Printf("VALUE: %s\n", b)
-	// }
-	// b, err = REPL([]byte("[\"load\", [\"`\", \"/home/jig/git/src/github.com/jig/miniMAL/go/src/core.jsonot\"]]"), symbolTable)
-	// if err != nil {
-	// 	fmt.Printf("ERROR: %v\n", err)
-	// } else {
-	// 	fmt.Printf("VALUE: %s\n", b)
-	// }
-	// b, err = REPL([]byte("[\"if\", [\"=\", [\"count\", [\"list\", 1, 2, 3]], 3], [\"`\", \"yes\"], [\"`\", \"no\"]]"), symbolTable)
-	// if err != nil {
-	// 	fmt.Printf("ERROR: %v\n", err)
-	// } else {
-	// 	fmt.Printf("VALUE: %s\n", b)
-	// }
-	// fmt.Println(symbolTable.Dump())
-	// os.Exit(0)
-
-	// b, err := REPL([]byte("[\"prn\", [\"list\", 1, 2, [\"`\", \"abc\"], [\"`\", \"\\\"\"]], [\"`\", \"def\"]]"), symbolTable)
-	// fmt.Printf("VALUE: %s\nERROR: %v\n", b, err)
-	// os.Exit(0)
-
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Print("> ")
-		line, err := reader.ReadString('\n')
-		if err == io.EOF {
-			os.Exit(0)
+		args := make([]interface{}, len(os.Args))
+		for i := range os.Args {
+			args[i] = os.Args[i]
 		}
-
-		b, err := REPL([]byte(strings.Trim(line, " \t\n")), symbolTable)
+		_, err := EVAL(
+			[]interface{}{
+				"load", []interface{}{
+					"`", args[1],
+				},
+			},
+			symbolTable)
 		if err != nil {
-			fmt.Println(err)
-			continue
+			log.Fatal(err)
 		}
+		os.Exit(0)
+	} else {
+		symbolTable := BaseSymbolTable()
+		symbolTable.Set("ARGS", os.Args[1:]) // inneeded
 
-		fmt.Println(string(b))
+		reader := bufio.NewReader(os.Stdin)
+		for {
+			fmt.Print("> ")
+			line, err := reader.ReadString('\n')
+			if err == io.EOF {
+				os.Exit(0)
+			}
+
+			b, err := REPL([]byte(strings.Trim(line, " \t\n")), symbolTable)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			fmt.Println(string(b))
+		}
 	}
 }
