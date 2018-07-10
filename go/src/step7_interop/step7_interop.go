@@ -16,20 +16,10 @@ import (
 	"strings"
 )
 
+// Environment contains the scope symbols
 type Environment struct {
 	Scope  map[string]interface{}
 	Parent *Environment
-}
-
-func (env *Environment) Dump() string {
-	str := ""
-	if env.Parent != nil {
-		str = env.Parent.Dump()
-	}
-	for k, _ := range env.Scope {
-		str += k + " "
-	}
-	return str + "\n"
 }
 
 // BaseSymbolTable returns a symbol table with predefined contents
@@ -446,38 +436,6 @@ type tcoFN struct {
 	argSpecAST interface{}
 }
 
-// type SomeType struct {
-// 	A string
-// 	I int
-// }
-
-// type Getter interface {
-// 	Get(string) (interface{}, error)
-// }
-
-// type Setter interface {
-// 	Set(string, interface{}) error
-// }
-
-// type Mapper interface {
-// 	Getter
-// 	Setter
-// }
-
-/*
-["def", "get", ["fn", ["a", "b"],
-    ["if", ["contains?", "a", "b"], [".-", "a", "b"], null]]],
-["def", "set", ["fn", ["a", "b", "c"],
-  ["do", [".-", "a", "b", "c"], "a"]]],
-["def", "first", ["fn", ["a"],
-  ["if", [">", [".-", "a", ["`", "length"]], 0],
-    ["nth", "a", 0],
-    null]]],
-["def", "last", ["fn", ["a"],
-  ["nth", "a", ["-", [".-", "a", ["`", "length"]], 1]]]],
-
-*/
-
 // EVAL returns an atom after evaluating an atom entry
 func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 	for {
@@ -503,30 +461,6 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					return value, nil
 				case "`": // quote
 					return typedAST[1], nil
-				case ".-": // get/set
-					// elements, err := evalAST(typedAST[1:], env)
-					// if err != nil {
-					// 	return nil, err
-					// }
-					// switch elements := elements.(type) {
-					// case []interface{}:
-					// 	index, ok := elements[1].(string)
-					// 	if ok {
-					// 		return nil, fmt.Errorf("index in .- must be  string")
-					// 	}
-					// 	x, err := elements[0].(Mapper).Get(index)
-					// 	if err != nil {
-					// 		return nil, err
-					// 	}
-					// 	if len(elements) < 3 {
-					// 		// get
-					// 		return x, nil
-					// 	}
-					// 	// set
-					// 	elements[0].(Mapper).Set(index, elements[2])
-					// 	return elements[2], nil
-					// default:
-					// }
 				case "fn":
 					if len(typedAST) != 3 {
 						return nil, fmt.Errorf("fn need 2 arguments (found %d)", len(typedAST))
@@ -646,8 +580,6 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 // PRINT prints the atom out
 func PRINT(ast interface{}) ([]byte, error) {
 	return json.Marshal(ast)
-	// spew.Dump(ast)
-	// return nil, nil
 }
 
 // REPL calls READ -> EVAL -> PRINT
@@ -683,17 +615,10 @@ func main() {
 		for i := range os.Args {
 			args[i] = os.Args[i]
 		}
-		_, err := EVAL(
-			[]interface{}{
-				"load", []interface{}{
-					"`", args[1],
-				},
-			},
-			symbolTable)
+		_, err := EVAL([]interface{}{"load", []interface{}{"`", args[1]}}, symbolTable)
 		if err != nil {
 			log.Fatal(err)
 		}
-		os.Exit(0)
 	} else {
 		symbolTable := BaseSymbolTable()
 		symbolTable.Set("ARGS", os.Args[1:]) // inneeded
