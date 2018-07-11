@@ -102,16 +102,14 @@ func BaseSymbolTable() (env *Environment) {
 			">":  args2(functionGT),
 			">=": args2(functionGE),
 			"=": args2(func(args []interface{}) interface{} {
-				if reflect.ValueOf(args[0]).Type() != reflect.ValueOf(args[1]).Type() {
-					return false
-				}
 				switch a := args[0].(type) {
 				case json.Number:
 					return functionEqual(args)
 				case string:
 					return strings.Compare(a, args[1].(string)) == 0
+				default:
+					return reflect.DeepEqual(args[0], args[1])
 				}
-				return reflect.DeepEqual(args[0], args[1])
 			}),
 			"list": argsVariadic(func(args []interface{}) interface{} { return args }),
 			"map": args1(func(args []interface{}) interface{} {
@@ -537,12 +535,6 @@ func JSON(ast interface{}) string {
 }
 
 func main() {
-	// symbolTable := BaseSymbolTable()
-	// line := `["if", [">", ["count", ["list", 1, 2, 3]], 3], ["` + "`" + `", "yes"], ["` + "`" + `", "no"]]`
-	// result := JSON(EVAL(READ(line), symbolTable))
-	// fmt.Println(result)
-	// os.Exit(0)
-
 	if len(os.Args) >= 2 {
 		symbolTable := BaseSymbolTable()
 		symbolTable.Set("ARGS", os.Args[2:])
