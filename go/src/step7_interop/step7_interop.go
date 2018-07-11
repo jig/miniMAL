@@ -35,7 +35,6 @@ func functionSub(args []interface{}) interface{} {
 func functionMul(args []interface{}) interface{} {
 	a, b := _arith2ints(args)
 	return json.Number(strconv.FormatInt(a*b, 10))
-
 }
 
 func functionDiv(args []interface{}) interface{} {
