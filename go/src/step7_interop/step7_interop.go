@@ -93,10 +93,14 @@ func _arith1int(args interface{}) (a int64) {
 func BaseSymbolTable() (env *Environment) {
 	env = &Environment{
 		Scope: map[string]interface{}{
-			"+": args2(functionAdd),
-			"*": args2(functionMul),
-			"-": args2(functionSub),
-			"/": args2(functionDiv),
+			"+":  args2(functionAdd),
+			"*":  args2(functionMul),
+			"-":  args2(functionSub),
+			"/":  args2(functionDiv),
+			"<":  args2(functionLT),
+			"<=": args2(functionLE),
+			">":  args2(functionGT),
+			">=": args2(functionGE),
 			"=": args2(func(args []interface{}) interface{} {
 				if reflect.ValueOf(args[0]).Type() != reflect.ValueOf(args[1]).Type() {
 					return false
@@ -107,48 +111,7 @@ func BaseSymbolTable() (env *Environment) {
 				case string:
 					return strings.Compare(a, args[1].(string)) == 0
 				}
-				// FIXME: this is not efficient, used only when an array is to be compared
 				return reflect.DeepEqual(args[0], args[1])
-			}),
-			"<": args2(func(args []interface{}) interface{} {
-				switch a := args[0].(type) {
-				case json.Number:
-					return functionLT(args)
-				case string:
-					return strings.Compare(a, args[1].(string)) == -1
-				default:
-					panic(fmt.Errorf("Cannot compare type %T", a))
-				}
-			}),
-			"<=": args2(func(args []interface{}) interface{} {
-				switch a := args[0].(type) {
-				case json.Number:
-					return functionLE(args)
-				case string:
-					return strings.Compare(a, args[1].(string)) != 1
-				default:
-					panic(fmt.Errorf("Cannot compare type %T", a))
-				}
-			}),
-			">": args2(func(args []interface{}) interface{} {
-				switch a := args[0].(type) {
-				case json.Number:
-					return functionGT(args)
-				case string:
-					return strings.Compare(a, args[1].(string)) == 1
-				default:
-					panic(fmt.Errorf("Cannot compare type %T", a))
-				}
-			}),
-			">=": args2(func(args []interface{}) interface{} {
-				switch a := args[0].(type) {
-				case json.Number:
-					return functionGE(args)
-				case string:
-					return strings.Compare(a, args[1].(string)) != -1
-				default:
-					panic(fmt.Errorf("Cannot compare type %T", a))
-				}
 			}),
 			"list": argsVariadic(func(args []interface{}) interface{} { return args }),
 			"map": args1(func(args []interface{}) interface{} {
@@ -300,12 +263,7 @@ func functionPrint(args []interface{}) interface{} {
 
 // functionRead reads a string
 func functionRead(args []interface{}) interface{} {
-	switch arg := args[0].(type) {
-	case string:
-		return READ(arg)
-	default:
-		panic(fmt.Errorf("read argument must be a string but was %T", args[0]))
-	}
+	return READ(args[0].(string))
 }
 
 // functionSlurp reads a file
