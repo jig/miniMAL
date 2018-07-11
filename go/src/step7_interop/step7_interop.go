@@ -285,7 +285,7 @@ func functionPrint(args []interface{}) (interface{}, error) {
 func functionRead(args []interface{}) (interface{}, error) {
 	switch arg := args[0].(type) {
 	case string:
-		return READ([]byte(arg))
+		return READ(arg), nil
 	default:
 		return nil, fmt.Errorf("read argument must be a string but was %T", args[0])
 	}
@@ -356,17 +356,17 @@ func (e *Environment) Set(index string, value interface{}) (interface{}, error) 
 }
 
 // READ parses a JSON encoded string and unmarshals it to an Atom
-func READ(b []byte) (ast interface{}, err error) {
-	switch string(b) {
+func READ(str string) (ast interface{}) {
+	switch str {
 	case "true":
-		return true, nil
+		return true
 	case "false":
-		return false, nil
+		return false
 	case "null":
-		return nil, nil
+		return nil
 	}
 
-	switch b[0] {
+	switch str[0] {
 	case '{':
 		ast = map[string]interface{}{}
 	case '[':
@@ -376,13 +376,11 @@ func READ(b []byte) (ast interface{}, err error) {
 	case '"':
 		ast = ""
 	default:
-		err = fmt.Errorf("Cannot unmarshal: %s", string(b))
+		panic(fmt.Errorf("Cannot unmarshal: %s", str))
 	}
-	err = json.Unmarshal(b, &ast)
-	if err != nil {
-		return nil, err
-	}
-	return ast, nil
+	err := json.Unmarshal([]byte(str), &ast)
+	assertNil(err)
+	return ast
 }
 
 func evalAST(ast interface{}, env *Environment) (interface{}, error) {
@@ -578,32 +576,28 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 }
 
 // PRINT prints the atom out
-func PRINT(ast interface{}) ([]byte, error) {
-	return json.Marshal(ast)
+func PRINT(ast interface{}) string {
+	b, err := json.Marshal(ast)
+	assertNil(err)
+	return string(b)
+}
+
+func assertNil(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
 
 // REPL calls READ -> EVAL -> PRINT
-func REPL(in []byte, env *Environment) ([]byte, error) {
+func REPL(in string, env *Environment) string {
 	if len(in) == 0 {
-		return []byte{}, nil
+		return in
 	}
 
-	atom, err := READ(in)
-	if err != nil {
-		return nil, err
-	}
+	out, err := EVAL(READ(in), env)
+	assertNil(err)
 
-	out, err := EVAL(atom, env)
-	if err != nil {
-		return nil, err
-	}
-
-	b, err := PRINT(out)
-	if err != nil {
-		return nil, err
-	}
-
-	return b, nil
+	return PRINT(out)
 }
 
 func main() {
@@ -631,13 +625,7 @@ func main() {
 				os.Exit(0)
 			}
 
-			b, err := REPL([]byte(strings.Trim(line, " \t\n")), symbolTable)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-
-			fmt.Println(string(b))
+			fmt.Println(REPL(strings.Trim(line, " \t\n"), symbolTable))
 		}
 	}
 }
