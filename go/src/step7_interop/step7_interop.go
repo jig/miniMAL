@@ -333,21 +333,21 @@ func NewSymbolTable(parent *Environment) *Environment {
 }
 
 // Get returns the value of a symbol
-func (e *Environment) Get(index string) (interface{}, error) {
+func (e *Environment) Get(index string) interface{} {
 	value, ok := e.Scope[index]
 	if !ok {
 		if e.Parent == nil {
-			return nil, fmt.Errorf("Symbol %q undefined", index)
+			panic(fmt.Errorf("Symbol %q undefined", index))
 		}
 		return e.Parent.Get(index)
 	}
-	return value, nil
+	return value
 }
 
 // Set defines a new symbol
-func (e *Environment) Set(index string, value interface{}) (interface{}, error) {
+func (e *Environment) Set(index string, value interface{}) interface{} {
 	e.Scope[index] = value
-	return value, nil
+	return value
 }
 
 // READ parses a JSON encoded string and unmarshals it to an Atom
@@ -378,18 +378,18 @@ func READ(str string) (ast interface{}) {
 	return ast
 }
 
-func evalAST(ast interface{}, env *Environment) (interface{}, error) {
+func evalAST(ast interface{}, env *Environment) interface{} {
 	switch ast := ast.(type) {
 	case []interface{}:
 		outAST := make([]interface{}, len(ast))
 		for i, atom := range ast {
 			outAST[i] = EVAL(atom, env)
 		}
-		return outAST, nil
+		return outAST
 	case string:
 		return env.Get(ast)
 	default:
-		return ast, nil
+		return ast
 	}
 }
 
@@ -453,9 +453,7 @@ func EVAL(ast interface{}, env *Environment) interface{} {
 					return tcoFN{
 						f: func(args []interface{}) (interface{}, error) {
 							newEnv, err := envBind(typedAST[1], env, args)
-							if err != nil {
-								panic(err)
-							}
+							assertNil(err)
 							return EVAL(typedAST[2], newEnv), nil
 						},
 						bodyAST:    typedAST[2],
@@ -478,8 +476,7 @@ func EVAL(ast interface{}, env *Environment) interface{} {
 							continue
 						}
 						value := EVAL(variables[i+1], newEnv)
-						_, err := newEnv.Set(variables[i].(string), value)
-						assertNil(err)
+						newEnv.Set(variables[i].(string), value)
 					}
 					env = newEnv
 					ast = typedAST[2].([]interface{})
@@ -510,8 +507,7 @@ func EVAL(ast interface{}, env *Environment) interface{} {
 					goto contTCO
 				case "do":
 					if len(typedAST) > 2 {
-						_, err := evalAST(typedAST[1:len(typedAST)-1], env)
-						assertNil(err)
+						evalAST(typedAST[1:len(typedAST)-1], env)
 					}
 					ast = typedAST[len(typedAST)-1]
 					goto contTCO
@@ -520,8 +516,7 @@ func EVAL(ast interface{}, env *Environment) interface{} {
 
 			// default cases for both switches
 			// -> fnCall(ast, env)
-			elements, err := evalAST(typedAST, env)
-			assertNil(err)
+			elements := evalAST(typedAST, env)
 
 			switch elements := elements.(type) {
 			case []interface{}:
@@ -533,6 +528,7 @@ func EVAL(ast interface{}, env *Environment) interface{} {
 					return result
 				case tcoFN:
 					ast = f.bodyAST
+					var err error
 					env, err = envBind(f.argSpecAST, f.env, elements[1:])
 					assertNil(err)
 					goto contTCO
@@ -543,9 +539,7 @@ func EVAL(ast interface{}, env *Environment) interface{} {
 				panic(fmt.Errorf("?? BOGUS %T", elements))
 			}
 		default:
-			result, err := evalAST(ast, env)
-			assertNil(err)
-			return result
+			return evalAST(ast, env)
 		}
 	contTCO:
 		// fmt.Println("( '̀-'́) ", ast)
