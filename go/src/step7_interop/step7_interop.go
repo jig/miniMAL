@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"reflect"
 	"strings"
@@ -111,22 +110,18 @@ func BaseSymbolTable() (env *Environment) {
 
 			// FILESYSTEM
 			"eval": args1(func(args []interface{}) (interface{}, error) {
-				return EVAL(args[0], env)
+				return EVAL(args[0], env), nil
 			}),
 			"read":  args1(functionRead),
 			"slurp": args1(functionSlurp),
 			"load": args1(func(args []interface{}) (interface{}, error) {
 				// functionLoad reads an AST from file
 				fileContents, err := functionSlurp(args)
-				if err != nil {
-					return nil, err
-				}
+				assertNil(err)
 
 				ast, err := functionRead([]interface{}{fileContents.(string)})
-				if err != nil {
-					return nil, err
-				}
-				return EVAL(ast, env)
+				assertNil(err)
+				return EVAL(ast, env), nil
 			}),
 			"str":     argsVariadic(functionStr),
 			"pr-str":  argsVariadic(functionPrStr),
@@ -388,11 +383,7 @@ func evalAST(ast interface{}, env *Environment) (interface{}, error) {
 	case []interface{}:
 		outAST := make([]interface{}, len(ast))
 		for i, atom := range ast {
-			var err error
-			outAST[i], err = EVAL(atom, env)
-			if err != nil {
-				return nil, err
-			}
+			outAST[i] = EVAL(atom, env)
 		}
 		return outAST, nil
 	case string:
@@ -435,7 +426,7 @@ type tcoFN struct {
 }
 
 // EVAL returns an atom after evaluating an atom entry
-func EVAL(ast interface{}, env *Environment) (interface{}, error) {
+func EVAL(ast interface{}, env *Environment) interface{} {
 	for {
 		// fmt.Println("(ง'̀-'́)ง", ast)
 		switch typedAST := ast.(type) {
@@ -448,65 +439,53 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 				case "def":
 					identifier, ok := typedAST[1].(string)
 					if !ok {
-						return nil, fmt.Errorf("Second argument in def %q must be a string name", typedAST[1])
+						panic(fmt.Errorf("Second argument in def %q must be a string name", typedAST[1]))
 					}
-					value, err := EVAL(typedAST[2], env)
-					if err != nil {
-						// return nil, fmt.Errorf("Invalid def body for def %q", typedAST[1])
-						return nil, err
-					}
+					value := EVAL(typedAST[2], env)
 					env.Set(identifier, value)
-					return value, nil
+					return value
 				case "`": // quote
-					return typedAST[1], nil
+					return typedAST[1]
 				case "fn":
 					if len(typedAST) != 3 {
-						return nil, fmt.Errorf("fn need 2 arguments (found %d)", len(typedAST))
+						panic(fmt.Errorf("fn need 2 arguments (found %d)", len(typedAST)))
 					}
 					return tcoFN{
 						f: func(args []interface{}) (interface{}, error) {
 							newEnv, err := envBind(typedAST[1], env, args)
 							if err != nil {
-								return nil, err
+								panic(err)
 							}
-							return EVAL(typedAST[2], newEnv)
+							return EVAL(typedAST[2], newEnv), nil
 						},
 						bodyAST:    typedAST[2],
 						env:        env,
 						argSpecAST: typedAST[1],
-					}, nil
+					}
 
 				// TCO
 				case "let":
 					newEnv := NewSymbolTable(env)
 					variables, ok := typedAST[1].([]interface{})
 					if !ok {
-						return nil, fmt.Errorf("Second argument in let must be a list")
+						panic(fmt.Errorf("Second argument in let must be a list"))
 					}
 					if len(variables)%2 != 0 {
-						return nil, fmt.Errorf("Second argument in let must be a list of pairs of name value")
+						panic(fmt.Errorf("Second argument in let must be a list of pairs of name value"))
 					}
 					for i := range variables {
 						if i%2 != 0 {
 							continue
 						}
-						value, err := EVAL(variables[i+1], newEnv)
-						if err != nil {
-							return nil, err
-						}
-						_, err = newEnv.Set(variables[i].(string), value)
-						if err != nil {
-							return nil, err
-						}
+						value := EVAL(variables[i+1], newEnv)
+						_, err := newEnv.Set(variables[i].(string), value)
+						assertNil(err)
 					}
 					env = newEnv
 					ast = typedAST[2].([]interface{})
 					goto contTCO
 				case "if":
-					evaledCondition, err := EVAL(typedAST[1], env)
-					if err != nil {
-						return nil, err
-					}
+					evaledCondition := EVAL(typedAST[1], env)
 					var ifCondition bool
 					switch evaledCondition := evaledCondition.(type) {
 					case bool:
@@ -520,7 +499,7 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					case string:
 						ifCondition = evaledCondition != ""
 					default:
-						return nil, fmt.Errorf("if requires a quasi boolean condition but got %T", evaledCondition)
+						panic(fmt.Errorf("if requires a quasi boolean condition but got %T", evaledCondition))
 					}
 
 					if ifCondition {
@@ -532,9 +511,7 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 				case "do":
 					if len(typedAST) > 2 {
 						_, err := evalAST(typedAST[1:len(typedAST)-1], env)
-						if err != nil {
-							return nil, err
-						}
+						assertNil(err)
 					}
 					ast = typedAST[len(typedAST)-1]
 					goto contTCO
@@ -544,31 +521,31 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 			// default cases for both switches
 			// -> fnCall(ast, env)
 			elements, err := evalAST(typedAST, env)
-			if err != nil {
-				return nil, err
-			}
+			assertNil(err)
 
 			switch elements := elements.(type) {
 			case []interface{}:
 				f := elements[0]
 				switch f := f.(type) {
 				case func([]interface{}) (interface{}, error):
-					return f(elements[1:])
+					result, err := f(elements[1:])
+					assertNil(err)
+					return result
 				case tcoFN:
 					ast = f.bodyAST
 					env, err = envBind(f.argSpecAST, f.env, elements[1:])
-					if err != nil {
-						return nil, err
-					}
+					assertNil(err)
 					goto contTCO
 				default:
-					return nil, fmt.Errorf("Non callable atom %T", f)
+					panic(fmt.Errorf("Non callable atom %T", f))
 				}
 			default:
-				return nil, fmt.Errorf("?? BOGUS %T", elements)
+				panic(fmt.Errorf("?? BOGUS %T", elements))
 			}
 		default:
-			return evalAST(ast, env)
+			result, err := evalAST(ast, env)
+			assertNil(err)
+			return result
 		}
 	contTCO:
 		// fmt.Println("( '̀-'́) ", ast)
@@ -593,11 +570,7 @@ func REPL(in string, env *Environment) string {
 	if len(in) == 0 {
 		return in
 	}
-
-	out, err := EVAL(READ(in), env)
-	assertNil(err)
-
-	return PRINT(out)
+	return PRINT(EVAL(READ(in), env))
 }
 
 func main() {
@@ -609,10 +582,7 @@ func main() {
 		for i := range os.Args {
 			args[i] = os.Args[i]
 		}
-		_, err := EVAL([]interface{}{"load", []interface{}{"`", args[1]}}, symbolTable)
-		if err != nil {
-			log.Fatal(err)
-		}
+		EVAL([]interface{}{"load", []interface{}{"`", args[1]}}, symbolTable)
 	} else {
 		symbolTable := BaseSymbolTable()
 		symbolTable.Set("ARGS", os.Args[1:]) // inneeded
