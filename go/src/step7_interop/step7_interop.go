@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -22,110 +22,154 @@ type Environment struct {
 	Parent *Environment
 }
 
+func functionAdd(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return json.Number(strconv.FormatInt(a+b, 10))
+}
+
+func functionSub(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return json.Number(strconv.FormatInt(a-b, 10))
+}
+
+func functionMul(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return json.Number(strconv.FormatInt(a*b, 10))
+}
+
+func functionDiv(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return json.Number(strconv.FormatInt(a/b, 10))
+}
+
+func functionEqual(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return a == b
+}
+
+func functionLT(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return a < b
+}
+
+func functionGT(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return a > b
+}
+
+func functionGE(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return a >= b
+}
+
+func functionLE(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return a <= b
+}
+
+func _arith2ints(args []interface{}) (a, b int64) {
+	var err error
+	a, err = args[0].(json.Number).Int64()
+	if err != nil {
+		panic(err)
+	}
+	b, err = args[1].(json.Number).Int64()
+	if err != nil {
+		panic(err)
+	}
+	return a, b
+}
+
+func _arith1int(args interface{}) (a int64) {
+	var err error
+	a, err = args.(json.Number).Int64()
+	if err != nil {
+		panic(err)
+	}
+	return a
+}
+
 // BaseSymbolTable returns a symbol table with predefined contents
 func BaseSymbolTable() (env *Environment) {
 	env = &Environment{
 		Scope: map[string]interface{}{
-			"+": argsVariadic(func(args []interface{}) (interface{}, error) {
-				result := float64(0)
-				for _, v := range args {
-					result += v.(float64)
-				}
-				return result, nil
-			}),
-			"*": argsVariadic(func(args []interface{}) (interface{}, error) {
-				result := float64(1)
-				for _, v := range args {
-					result *= v.(float64)
-				}
-				return result, nil
-			}),
-			"-": args2(func(args []interface{}) (interface{}, error) { return args[0].(float64) - args[1].(float64), nil }),
-			"/": args2(func(args []interface{}) (interface{}, error) { return args[0].(float64) / args[1].(float64), nil }),
-			"=": args2(func(args []interface{}) (interface{}, error) {
+			"+": args2(functionAdd),
+			"*": args2(functionMul),
+			"-": args2(functionSub),
+			"/": args2(functionDiv),
+			"=": args2(func(args []interface{}) interface{} {
 				if reflect.ValueOf(args[0]).Type() != reflect.ValueOf(args[1]).Type() {
-					return false, nil
+					return false
 				}
 				switch a := args[0].(type) {
-				case float64:
-					return a == args[1].(float64), nil
+				case json.Number:
+					return functionEqual(args)
 				case string:
-					return strings.Compare(a, args[1].(string)) == 0, nil
+					return strings.Compare(a, args[1].(string)) == 0
 				}
 				// FIXME: this is not efficient, used only when an array is to be compared
-				return reflect.DeepEqual(args[0], args[1]), nil
+				return reflect.DeepEqual(args[0], args[1])
 			}),
-			"<": args2(func(args []interface{}) (interface{}, error) {
+			"<": args2(func(args []interface{}) interface{} {
 				switch a := args[0].(type) {
-				case float64:
-					return a < args[1].(float64), nil
+				case json.Number:
+					return functionLT(args)
 				case string:
-					return strings.Compare(a, args[1].(string)) == -1, nil
+					return strings.Compare(a, args[1].(string)) == -1
 				default:
-					return nil, fmt.Errorf("Cannot compare type %T", a)
+					panic(fmt.Errorf("Cannot compare type %T", a))
 				}
 			}),
-			"<=": args2(func(args []interface{}) (interface{}, error) {
+			"<=": args2(func(args []interface{}) interface{} {
 				switch a := args[0].(type) {
-				case float64:
-					return a <= args[1].(float64), nil
+				case json.Number:
+					return functionLE(args)
 				case string:
-					return strings.Compare(a, args[1].(string)) != 1, nil
+					return strings.Compare(a, args[1].(string)) != 1
 				default:
-					return nil, fmt.Errorf("Cannot compare type %T", a)
+					panic(fmt.Errorf("Cannot compare type %T", a))
 				}
 			}),
-			">": args2(func(args []interface{}) (interface{}, error) {
+			">": args2(func(args []interface{}) interface{} {
 				switch a := args[0].(type) {
-				case float64:
-					return a > args[1].(float64), nil
+				case json.Number:
+					return functionGT(args)
 				case string:
-					return strings.Compare(a, args[1].(string)) == 1, nil
+					return strings.Compare(a, args[1].(string)) == 1
 				default:
-					return nil, fmt.Errorf("Cannot compare type %T", a)
+					panic(fmt.Errorf("Cannot compare type %T", a))
 				}
 			}),
-			">=": args2(func(args []interface{}) (interface{}, error) {
+			">=": args2(func(args []interface{}) interface{} {
 				switch a := args[0].(type) {
-				case float64:
-					return a >= args[1].(float64), nil
+				case json.Number:
+					return functionGE(args)
 				case string:
-					return strings.Compare(a, args[1].(string)) != -1, nil
+					return strings.Compare(a, args[1].(string)) != -1
 				default:
-					return nil, fmt.Errorf("Cannot compare type %T", a)
+					panic(fmt.Errorf("Cannot compare type %T", a))
 				}
 			}),
-			"list": argsVariadic(func(args []interface{}) (interface{}, error) { return args, nil }),
-			"map": args1(func(args []interface{}) (interface{}, error) {
+			"list": argsVariadic(func(args []interface{}) interface{} { return args }),
+			"map": args1(func(args []interface{}) interface{} {
 				result := make([]interface{}, len(args)-1)
 				for i, value := range args[1:] {
-					var err error
-					f := args[0].(func([]interface{}) (interface{}, error))
-					result[i], err = f([]interface{}{value})
-					if err != nil {
-						return nil, err
-					}
+					f := args[0].(func([]interface{}) interface{})
+					result[i] = f([]interface{}{value})
 				}
-				return result, nil
+				return result
 			}),
 
 			// FILESYSTEM
-			"eval": args1(func(args []interface{}) (interface{}, error) {
+			"eval": args1(func(args []interface{}) interface{} {
 				return EVAL(args[0], env)
 			}),
 			"read":  args1(functionRead),
 			"slurp": args1(functionSlurp),
-			"load": args1(func(args []interface{}) (interface{}, error) {
+			"load": args1(func(args []interface{}) interface{} {
 				// functionLoad reads an AST from file
-				fileContents, err := functionSlurp(args)
-				if err != nil {
-					return nil, err
-				}
-
-				ast, err := functionRead([]interface{}{fileContents.(string)})
-				if err != nil {
-					return nil, err
-				}
+				fileContents := functionSlurp(args)
+				ast := functionRead([]interface{}{fileContents.(string)})
 				return EVAL(ast, env)
 			}),
 			"str":     argsVariadic(functionStr),
@@ -145,186 +189,159 @@ func BaseSymbolTable() (env *Environment) {
 	return env
 }
 
-func functionFirst(args []interface{}) (interface{}, error) {
+func functionFirst(args []interface{}) interface{} {
 	switch arg0 := args[0].(type) {
 	case []interface{}:
 		l := len(arg0)
 		if l == 0 {
-			return nil, nil
+			return nil
 		}
-		return arg0[0], nil
+		return arg0[0]
 	default:
-		return nil, fmt.Errorf("first argument must be a list")
+		panic(fmt.Errorf("first argument must be a list"))
 	}
 }
 
-func functionLast(args []interface{}) (interface{}, error) {
+func functionLast(args []interface{}) interface{} {
 	switch arg0 := args[0].(type) {
 	case []interface{}:
 		l := len(arg0)
 		if l == 0 {
-			return nil, nil
+			return nil
 		}
-		return arg0[l-1], nil
+		return arg0[l-1]
 	default:
-		return nil, fmt.Errorf("last argument must be a list")
+		panic(fmt.Errorf("last argument must be a list"))
 	}
 }
 
-func functionNth(args []interface{}) (interface{}, error) {
-	switch n := args[1].(type) {
-	case float64:
+func functionNth(args []interface{}) interface{} {
+	switch args[1].(type) {
+	case json.Number:
+		n := _arith1int(args[1])
 		switch arg0 := args[0].(type) {
 		case []interface{}:
-			l := len(arg0)
-			if l < int(n) {
-				return nil, nil
+			lenght := int64(len(arg0))
+			if lenght < n {
+				return nil
 			}
-			return arg0[int(n)], nil
+			return arg0[n]
 		default:
-			return nil, fmt.Errorf("nth second argument must be a list")
+			panic(fmt.Errorf("nth second argument must be a list"))
 		}
 	default:
-		return nil, fmt.Errorf("nth first argument must be a number")
+		panic(fmt.Errorf("nth first argument must be a number"))
 	}
 }
 
-func functionStringQ(args []interface{}) (interface{}, error) {
+func functionStringQ(args []interface{}) interface{} {
 	_, ok := args[0].(string)
-	return ok, nil
+	return ok
 }
 
-func functionListQ(args []interface{}) (interface{}, error) {
+func functionListQ(args []interface{}) interface{} {
 	_, ok := args[0].([]interface{})
-	return ok, nil
+	return ok
 }
 
-func functionCount(args []interface{}) (interface{}, error) {
+func functionCount(args []interface{}) interface{} {
 	elements, ok := args[0].([]interface{})
 	if !ok {
-		return nil, fmt.Errorf("Not a list")
+		panic(fmt.Errorf("Not a list"))
 	}
-	return float64(len(elements)), nil
+	return json.Number(strconv.Itoa(len(elements)))
 }
 
-func functionEmptyQ(args []interface{}) (interface{}, error) {
-	count, err := functionCount(args)
-	if err != nil {
-		return nil, err
+func functionEmptyQ(args []interface{}) interface{} {
+	elements, ok := args[0].([]interface{})
+	if !ok {
+		panic(fmt.Errorf("Not a list"))
 	}
-	return count.(float64) == 0, nil
+	return len(elements) == 0
 }
 
-func functionStr(args []interface{}) (interface{}, error) {
+func functionStr(args []interface{}) interface{} {
 	strs := ""
 	for _, arg := range args {
 		switch arg := arg.(type) {
 		case string:
 			strs += arg
 		case []interface{}:
-			a, err := functionStr(arg)
-			if err != nil {
-				return nil, err
-			}
-			strs += a.(string)
+			strs += functionStr(arg).(string)
 		default:
-			bArg, err := json.Marshal(arg)
-			if err != nil {
-				return nil, err
-			}
-			strs += string(bArg)
+			strs += JSON(arg)
 		}
 	}
-	return strs, nil
+	return strs
 }
 
-func functionPrStr(args []interface{}) (interface{}, error) {
+func functionPrStr(args []interface{}) interface{} {
 	strs := []string{}
 	for _, arg := range args {
-		bArg, err := json.Marshal(arg)
-		if err != nil {
-			return nil, err
-		}
-		strs = append(strs, string(bArg))
+		strs = append(strs, JSON(arg))
 	}
-	return strings.Join(strs, " "), nil
+	return strings.Join(strs, " ")
 }
 
-func functionPrn(args []interface{}) (interface{}, error) {
-	strs := []string{}
-	for _, arg := range args {
-		b, err := json.Marshal(arg)
-		if err != nil {
-			return nil, err
-		}
-		strs = append(strs, string(b))
-	}
-	fmt.Println(strings.Join(strs, " "))
-	return nil, nil
+func functionPrn(args []interface{}) interface{} {
+	fmt.Println(functionPrStr(args))
+	return nil
 }
 
-func functionPrintln(args []interface{}) (interface{}, error) {
-	str, err := functionStr(args)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Println(str)
-	return nil, nil
+func functionPrintln(args []interface{}) interface{} {
+	fmt.Println(functionStr(args))
+	return nil
 }
 
-func functionPrint(args []interface{}) (interface{}, error) {
-	str, err := functionStr(args)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Print(str)
-	return nil, nil
+func functionPrint(args []interface{}) interface{} {
+	fmt.Print(functionStr(args))
+	return nil
 }
 
 // functionRead reads a string
-func functionRead(args []interface{}) (interface{}, error) {
+func functionRead(args []interface{}) interface{} {
 	switch arg := args[0].(type) {
 	case string:
-		return READ([]byte(arg))
+		return READ(arg)
 	default:
-		return nil, fmt.Errorf("read argument must be a string but was %T", args[0])
+		panic(fmt.Errorf("read argument must be a string but was %T", args[0]))
 	}
 }
 
 // functionSlurp reads a file
-func functionSlurp(args []interface{}) (interface{}, error) {
+func functionSlurp(args []interface{}) interface{} {
 	switch fileName := args[0].(type) {
 	case string:
 		contents, err := ioutil.ReadFile(fileName)
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
-		return string(contents), nil
+		return string(contents)
 	default:
-		return nil, fmt.Errorf("slurp requires a filename")
+		panic(fmt.Errorf("slurp requires a filename"))
 	}
 }
 
-func args1(f func(args []interface{}) (interface{}, error)) func(args []interface{}) (interface{}, error) {
-	return func(args []interface{}) (interface{}, error) {
+func args1(f func(args []interface{}) interface{}) func(args []interface{}) interface{} {
+	return func(args []interface{}) interface{} {
 		if len(args) != 1 {
-			return nil, fmt.Errorf("wrong number of arguments (%d instead of 1)", len(args))
+			panic(fmt.Errorf("wrong number of arguments (%d instead of 1)", len(args)))
 		}
 		return f(args)
 	}
 }
 
-func args2(f func(args []interface{}) (interface{}, error)) func(args []interface{}) (interface{}, error) {
-	return func(args []interface{}) (interface{}, error) {
+func args2(f func(args []interface{}) interface{}) func(args []interface{}) interface{} {
+	return func(args []interface{}) interface{} {
 		if len(args) != 2 {
-			return nil, fmt.Errorf("wrong number of arguments (%d instead of 2)", len(args))
+			panic(fmt.Errorf("wrong number of arguments (%d instead of 2)", len(args)))
 		}
 		return f(args)
 	}
 }
 
-func argsVariadic(f func(args []interface{}) (interface{}, error)) func(args []interface{}) (interface{}, error) {
-	return func(args []interface{}) (interface{}, error) {
+func argsVariadic(f func(args []interface{}) interface{}) func(args []interface{}) interface{} {
+	return func(args []interface{}) interface{} {
 		return f(args)
 	}
 }
@@ -338,108 +355,107 @@ func NewSymbolTable(parent *Environment) *Environment {
 }
 
 // Get returns the value of a symbol
-func (e *Environment) Get(index string) (interface{}, error) {
+func (e *Environment) Get(index string) interface{} {
 	value, ok := e.Scope[index]
 	if !ok {
 		if e.Parent == nil {
-			return nil, fmt.Errorf("Symbol %q undefined", index)
+			panic(fmt.Errorf("Symbol %q undefined", index))
 		}
 		return e.Parent.Get(index)
 	}
-	return value, nil
+	return value
 }
 
 // Set defines a new symbol
-func (e *Environment) Set(index string, value interface{}) (interface{}, error) {
+func (e *Environment) Set(index string, value interface{}) interface{} {
 	e.Scope[index] = value
-	return value, nil
+	return value
 }
 
 // READ parses a JSON encoded string and unmarshals it to an Atom
-func READ(b []byte) (ast interface{}, err error) {
-	switch string(b) {
+func READ(str string) (ast interface{}) {
+	switch str {
 	case "true":
-		return true, nil
+		return true
 	case "false":
-		return false, nil
+		return false
 	case "null":
-		return nil, nil
+		return nil
 	}
 
-	switch b[0] {
+	switch str[0] {
 	case '{':
 		ast = map[string]interface{}{}
 	case '[':
 		ast = []interface{}{}
 	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-		ast = float64(0) // FIXME: json decoding by default decodes numbers to float64. Change default behaviour to int64
+		var number json.Number
+		ast = number
 	case '"':
 		ast = ""
 	default:
-		err = fmt.Errorf("Cannot unmarshal: %s", string(b))
+		panic(fmt.Errorf("Cannot unmarshal: %s", str))
 	}
-	err = json.Unmarshal(b, &ast)
-	if err != nil {
-		return nil, err
+	dec := json.NewDecoder(strings.NewReader(str))
+	dec.UseNumber()
+
+	if err := dec.Decode(&ast); err != nil {
+		panic(err)
 	}
-	return ast, nil
+	return ast
 }
 
-func evalAST(ast interface{}, env *Environment) (interface{}, error) {
+func evalAST(ast interface{}, env *Environment) interface{} {
 	switch ast := ast.(type) {
 	case []interface{}:
 		outAST := make([]interface{}, len(ast))
 		for i, atom := range ast {
-			var err error
-			outAST[i], err = EVAL(atom, env)
-			if err != nil {
-				return nil, err
-			}
+			outAST[i] = EVAL(atom, env)
 		}
-		return outAST, nil
+		return outAST
 	case string:
 		return env.Get(ast)
 	default:
-		return ast, nil
+		return ast
 	}
 }
 
-func envBind(ast interface{}, env *Environment, expressions []interface{}) (*Environment, error) {
+func envBind(ast interface{}, env *Environment, expressions []interface{}) *Environment {
 	switch ast := ast.(type) {
 	case []interface{}:
 		newEnv := NewSymbolTable(env)
 		for i, atom := range ast {
 			switch atom := atom.(type) {
 			default:
-				return nil, fmt.Errorf("Variable identifier must be a string (was %T)", atom)
+				panic(fmt.Errorf("Variable identifier must be a string (was %T)", atom))
 			case string:
 				if atom == "&" {
 					if i+1 == len(ast) {
-						return nil, fmt.Errorf("binding list cannot end with &")
+						panic(fmt.Errorf("binding list cannot end with &"))
 					}
 					newEnv.Set(ast[i+1].(string), expressions[i:])
-					return newEnv, nil
+					return newEnv
 				}
 				newEnv.Set(atom, expressions[i])
 			}
 		}
-		return newEnv, nil
+		return newEnv
 	default:
-		return nil, fmt.Errorf("Binding must receive an array")
+		panic(fmt.Errorf("Binding must receive an array"))
 	}
 }
 
 type tcoFN struct {
-	f          func(args []interface{}) (interface{}, error)
+	f          func(args []interface{}) interface{}
 	bodyAST    interface{}
 	env        *Environment
 	argSpecAST interface{}
 }
 
 // EVAL returns an atom after evaluating an atom entry
-func EVAL(ast interface{}, env *Environment) (interface{}, error) {
+func EVAL(ast interface{}, env *Environment) interface{} {
 	for {
-		// fmt.Println("(ง'̀-'́)ง", ast)
+		// fmt.Printf("(ง'̀-'́)ง %[1]T %[1]s\n", ast)
 		switch typedAST := ast.(type) {
 		case []interface{}:
 			switch first := typedAST[0].(type) {
@@ -450,71 +466,55 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 				case "def":
 					identifier, ok := typedAST[1].(string)
 					if !ok {
-						return nil, fmt.Errorf("Second argument in def %q must be a string name", typedAST[1])
+						panic(fmt.Errorf("Second argument in def %q must be a string name", typedAST[1]))
 					}
-					value, err := EVAL(typedAST[2], env)
-					if err != nil {
-						// return nil, fmt.Errorf("Invalid def body for def %q", typedAST[1])
-						return nil, err
-					}
+					value := EVAL(typedAST[2], env)
 					env.Set(identifier, value)
-					return value, nil
+					return value
 				case "`": // quote
-					return typedAST[1], nil
+					return typedAST[1]
 				case "fn":
 					if len(typedAST) != 3 {
-						return nil, fmt.Errorf("fn need 2 arguments (found %d)", len(typedAST))
+						panic(fmt.Errorf("fn need 2 arguments (found %d)", len(typedAST)))
 					}
 					return tcoFN{
-						f: func(args []interface{}) (interface{}, error) {
-							newEnv, err := envBind(typedAST[1], env, args)
-							if err != nil {
-								return nil, err
-							}
+						f: func(args []interface{}) interface{} {
+							newEnv := envBind(typedAST[1], env, args)
 							return EVAL(typedAST[2], newEnv)
 						},
 						bodyAST:    typedAST[2],
 						env:        env,
 						argSpecAST: typedAST[1],
-					}, nil
+					}
 
 				// TCO
 				case "let":
 					newEnv := NewSymbolTable(env)
 					variables, ok := typedAST[1].([]interface{})
 					if !ok {
-						return nil, fmt.Errorf("Second argument in let must be a list")
+						panic(fmt.Errorf("Second argument in let must be a list"))
 					}
 					if len(variables)%2 != 0 {
-						return nil, fmt.Errorf("Second argument in let must be a list of pairs of name value")
+						panic(fmt.Errorf("Second argument in let must be a list of pairs of name value"))
 					}
 					for i := range variables {
 						if i%2 != 0 {
 							continue
 						}
-						value, err := EVAL(variables[i+1], newEnv)
-						if err != nil {
-							return nil, err
-						}
-						_, err = newEnv.Set(variables[i].(string), value)
-						if err != nil {
-							return nil, err
-						}
+						value := EVAL(variables[i+1], newEnv)
+						newEnv.Set(variables[i].(string), value)
 					}
 					env = newEnv
 					ast = typedAST[2].([]interface{})
 					goto contTCO
 				case "if":
-					evaledCondition, err := EVAL(typedAST[1], env)
-					if err != nil {
-						return nil, err
-					}
+					evaledCondition := EVAL(typedAST[1], env)
 					var ifCondition bool
 					switch evaledCondition := evaledCondition.(type) {
 					case bool:
 						ifCondition = evaledCondition
-					case float64: // FIXME: float64 cannot be compared reliably with == / !=
-						ifCondition = evaledCondition != 0
+					case json.Number:
+						ifCondition = functionEqual([]interface{}{evaledCondition, 0}).(bool)
 					case nil:
 						ifCondition = false
 					case []interface{}:
@@ -522,7 +522,7 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					case string:
 						ifCondition = evaledCondition != ""
 					default:
-						return nil, fmt.Errorf("if requires a quasi boolean condition but got %T", evaledCondition)
+						panic(fmt.Errorf("if requires a quasi boolean condition but got %T", evaledCondition))
 					}
 
 					if ifCondition {
@@ -533,10 +533,7 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 					goto contTCO
 				case "do":
 					if len(typedAST) > 2 {
-						_, err := evalAST(typedAST[1:len(typedAST)-1], env)
-						if err != nil {
-							return nil, err
-						}
+						evalAST(typedAST[1:len(typedAST)-1], env)
 					}
 					ast = typedAST[len(typedAST)-1]
 					goto contTCO
@@ -545,68 +542,49 @@ func EVAL(ast interface{}, env *Environment) (interface{}, error) {
 
 			// default cases for both switches
 			// -> fnCall(ast, env)
-			elements, err := evalAST(typedAST, env)
-			if err != nil {
-				return nil, err
-			}
+			elements := evalAST(typedAST, env)
 
 			switch elements := elements.(type) {
 			case []interface{}:
 				f := elements[0]
 				switch f := f.(type) {
-				case func([]interface{}) (interface{}, error):
-					return f(elements[1:])
+				case func([]interface{}) interface{}:
+					result := f(elements[1:])
+					return result
 				case tcoFN:
 					ast = f.bodyAST
-					env, err = envBind(f.argSpecAST, f.env, elements[1:])
-					if err != nil {
-						return nil, err
-					}
+					env = envBind(f.argSpecAST, f.env, elements[1:])
 					goto contTCO
 				default:
-					return nil, fmt.Errorf("Non callable atom %T", f)
+					panic(fmt.Errorf("Non callable atom %T", f))
 				}
 			default:
-				return nil, fmt.Errorf("?? BOGUS %T", elements)
+				panic(fmt.Errorf("?? BOGUS %T", elements))
 			}
 		default:
 			return evalAST(ast, env)
 		}
 	contTCO:
-		// fmt.Println("( '̀-'́) ", ast)
+		// fmt.Printf("        %[1]T %[1]s\n", ast)
 	}
 }
 
-// PRINT prints the atom out
-func PRINT(ast interface{}) ([]byte, error) {
-	return json.Marshal(ast)
-}
-
-// REPL calls READ -> EVAL -> PRINT
-func REPL(in []byte, env *Environment) ([]byte, error) {
-	if len(in) == 0 {
-		return []byte{}, nil
-	}
-
-	atom, err := READ(in)
+// JSON returns the atom JSON sencoded
+func JSON(ast interface{}) string {
+	b, err := json.Marshal(ast)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-
-	out, err := EVAL(atom, env)
-	if err != nil {
-		return nil, err
-	}
-
-	b, err := PRINT(out)
-	if err != nil {
-		return nil, err
-	}
-
-	return b, nil
+	return string(b)
 }
 
 func main() {
+	// symbolTable := BaseSymbolTable()
+	// line := `["if", [">", ["count", ["list", 1, 2, 3]], 3], ["` + "`" + `", "yes"], ["` + "`" + `", "no"]]`
+	// result := JSON(EVAL(READ(line), symbolTable))
+	// fmt.Println(result)
+	// os.Exit(0)
+
 	if len(os.Args) >= 2 {
 		symbolTable := BaseSymbolTable()
 		symbolTable.Set("ARGS", os.Args[2:])
@@ -615,10 +593,7 @@ func main() {
 		for i := range os.Args {
 			args[i] = os.Args[i]
 		}
-		_, err := EVAL([]interface{}{"load", []interface{}{"`", args[1]}}, symbolTable)
-		if err != nil {
-			log.Fatal(err)
-		}
+		EVAL([]interface{}{"load", []interface{}{"`", args[1]}}, symbolTable)
 	} else {
 		symbolTable := BaseSymbolTable()
 		symbolTable.Set("ARGS", os.Args[1:]) // inneeded
@@ -631,13 +606,12 @@ func main() {
 				os.Exit(0)
 			}
 
-			b, err := REPL([]byte(strings.Trim(line, " \t\n")), symbolTable)
-			if err != nil {
-				fmt.Println(err)
+			line = strings.Trim(line, " \t\n")
+			if len(line) == 0 {
 				continue
 			}
 
-			fmt.Println(string(b))
+			fmt.Println(JSON(EVAL(READ(line), symbolTable)))
 		}
 	}
 }
