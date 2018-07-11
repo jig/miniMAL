@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -21,33 +22,89 @@ type Environment struct {
 	Parent *Environment
 }
 
+func functionAdd(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return json.Number(strconv.FormatInt(a+b, 10))
+}
+
+func functionSub(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return json.Number(strconv.FormatInt(a-b, 10))
+}
+
+func functionMul(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return json.Number(strconv.FormatInt(a*b, 10))
+
+}
+
+func functionDiv(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return json.Number(strconv.FormatInt(a/b, 10))
+}
+
+func functionEqual(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return a == b
+}
+
+func functionLT(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return a < b
+}
+
+func functionGT(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return a > b
+}
+
+func functionGE(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return a >= b
+}
+
+func functionLE(args []interface{}) interface{} {
+	a, b := _arith2ints(args)
+	return a <= b
+}
+
+func _arith2ints(args []interface{}) (a, b int64) {
+	var err error
+	a, err = args[0].(json.Number).Int64()
+	if err != nil {
+		panic(err)
+	}
+	b, err = args[1].(json.Number).Int64()
+	if err != nil {
+		panic(err)
+	}
+	return a, b
+}
+
+func _arith1int(args interface{}) (a int64) {
+	var err error
+	a, err = args.(json.Number).Int64()
+	if err != nil {
+		panic(err)
+	}
+	return a
+}
+
 // BaseSymbolTable returns a symbol table with predefined contents
 func BaseSymbolTable() (env *Environment) {
 	env = &Environment{
 		Scope: map[string]interface{}{
-			"+": argsVariadic(func(args []interface{}) interface{} {
-				result := float64(0)
-				for _, v := range args {
-					result += v.(float64)
-				}
-				return result
-			}),
-			"*": argsVariadic(func(args []interface{}) interface{} {
-				result := float64(1)
-				for _, v := range args {
-					result *= v.(float64)
-				}
-				return result
-			}),
-			"-": args2(func(args []interface{}) interface{} { return args[0].(float64) - args[1].(float64) }),
-			"/": args2(func(args []interface{}) interface{} { return args[0].(float64) / args[1].(float64) }),
+			"+": args2(functionAdd),
+			"*": args2(functionMul),
+			"-": args2(functionSub),
+			"/": args2(functionDiv),
 			"=": args2(func(args []interface{}) interface{} {
 				if reflect.ValueOf(args[0]).Type() != reflect.ValueOf(args[1]).Type() {
 					return false
 				}
 				switch a := args[0].(type) {
-				case float64:
-					return a == args[1].(float64)
+				case json.Number:
+					return functionEqual(args)
 				case string:
 					return strings.Compare(a, args[1].(string)) == 0
 				}
@@ -56,8 +113,8 @@ func BaseSymbolTable() (env *Environment) {
 			}),
 			"<": args2(func(args []interface{}) interface{} {
 				switch a := args[0].(type) {
-				case float64:
-					return a < args[1].(float64)
+				case json.Number:
+					return functionLT(args)
 				case string:
 					return strings.Compare(a, args[1].(string)) == -1
 				default:
@@ -66,8 +123,8 @@ func BaseSymbolTable() (env *Environment) {
 			}),
 			"<=": args2(func(args []interface{}) interface{} {
 				switch a := args[0].(type) {
-				case float64:
-					return a <= args[1].(float64)
+				case json.Number:
+					return functionLE(args)
 				case string:
 					return strings.Compare(a, args[1].(string)) != 1
 				default:
@@ -76,8 +133,8 @@ func BaseSymbolTable() (env *Environment) {
 			}),
 			">": args2(func(args []interface{}) interface{} {
 				switch a := args[0].(type) {
-				case float64:
-					return a > args[1].(float64)
+				case json.Number:
+					return functionGT(args)
 				case string:
 					return strings.Compare(a, args[1].(string)) == 1
 				default:
@@ -86,8 +143,8 @@ func BaseSymbolTable() (env *Environment) {
 			}),
 			">=": args2(func(args []interface{}) interface{} {
 				switch a := args[0].(type) {
-				case float64:
-					return a >= args[1].(float64)
+				case json.Number:
+					return functionGE(args)
 				case string:
 					return strings.Compare(a, args[1].(string)) != -1
 				default:
@@ -160,15 +217,16 @@ func functionLast(args []interface{}) interface{} {
 }
 
 func functionNth(args []interface{}) interface{} {
-	switch n := args[1].(type) {
-	case float64:
+	switch args[1].(type) {
+	case json.Number:
+		n := _arith1int(args[1])
 		switch arg0 := args[0].(type) {
 		case []interface{}:
-			l := len(arg0)
-			if l < int(n) {
+			lenght := int64(len(arg0))
+			if lenght < n {
 				return nil
 			}
-			return arg0[int(n)]
+			return arg0[n]
 		default:
 			panic(fmt.Errorf("nth second argument must be a list"))
 		}
@@ -192,12 +250,15 @@ func functionCount(args []interface{}) interface{} {
 	if !ok {
 		panic(fmt.Errorf("Not a list"))
 	}
-	return float64(len(elements))
+	return json.Number(strconv.Itoa(len(elements)))
 }
 
 func functionEmptyQ(args []interface{}) interface{} {
-	count := functionCount(args)
-	return count.(float64) == 0
+	elements, ok := args[0].([]interface{})
+	if !ok {
+		panic(fmt.Errorf("Not a list"))
+	}
+	return len(elements) == 0
 }
 
 func functionStr(args []interface{}) interface{} {
@@ -234,8 +295,7 @@ func functionPrintln(args []interface{}) interface{} {
 }
 
 func functionPrint(args []interface{}) interface{} {
-	str := functionStr(args)
-	fmt.Print(str)
+	fmt.Print(functionStr(args))
 	return nil
 }
 
@@ -330,13 +390,17 @@ func READ(str string) (ast interface{}) {
 	case '[':
 		ast = []interface{}{}
 	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-		ast = float64(0) // FIXME: json decoding by default decodes numbers to float64. Change default behaviour to int64
+		var number json.Number
+		ast = number
 	case '"':
 		ast = ""
 	default:
 		panic(fmt.Errorf("Cannot unmarshal: %s", str))
 	}
-	if err := json.Unmarshal([]byte(str), &ast); err != nil {
+	dec := json.NewDecoder(strings.NewReader(str))
+	dec.UseNumber()
+
+	if err := dec.Decode(&ast); err != nil {
 		panic(err)
 	}
 	return ast
@@ -392,7 +456,7 @@ type tcoFN struct {
 // EVAL returns an atom after evaluating an atom entry
 func EVAL(ast interface{}, env *Environment) interface{} {
 	for {
-		// fmt.Println("(ง'̀-'́)ง", ast)
+		// fmt.Printf("(ง'̀-'́)ง %[1]T %[1]s\n", ast)
 		switch typedAST := ast.(type) {
 		case []interface{}:
 			switch first := typedAST[0].(type) {
@@ -450,8 +514,8 @@ func EVAL(ast interface{}, env *Environment) interface{} {
 					switch evaledCondition := evaledCondition.(type) {
 					case bool:
 						ifCondition = evaledCondition
-					case float64: // FIXME: float64 cannot be compared reliably with == / !=
-						ifCondition = evaledCondition != 0
+					case json.Number:
+						ifCondition = functionEqual([]interface{}{evaledCondition, 0}).(bool)
 					case nil:
 						ifCondition = false
 					case []interface{}:
@@ -502,7 +566,7 @@ func EVAL(ast interface{}, env *Environment) interface{} {
 			return evalAST(ast, env)
 		}
 	contTCO:
-		// fmt.Println("( '̀-'́) ", ast)
+		// fmt.Printf("        %[1]T %[1]s\n", ast)
 	}
 }
 
@@ -516,6 +580,12 @@ func JSON(ast interface{}) string {
 }
 
 func main() {
+	// symbolTable := BaseSymbolTable()
+	// line := `["if", [">", ["count", ["list", 1, 2, 3]], 3], ["` + "`" + `", "yes"], ["` + "`" + `", "no"]]`
+	// result := JSON(EVAL(READ(line), symbolTable))
+	// fmt.Println(result)
+	// os.Exit(0)
+
 	if len(os.Args) >= 2 {
 		symbolTable := BaseSymbolTable()
 		symbolTable.Set("ARGS", os.Args[2:])
