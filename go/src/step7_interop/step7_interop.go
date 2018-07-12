@@ -102,11 +102,9 @@ func BaseSymbolTable() (env *Environment) {
 			">":  args2(functionGT),
 			">=": args2(functionGE),
 			"=": args2(func(args []interface{}) interface{} {
-				switch a := args[0].(type) {
+				switch args[0].(type) {
 				case json.Number:
 					return functionEqual(args)
-				case string:
-					return strings.Compare(a, args[1].(string)) == 0
 				default:
 					return reflect.DeepEqual(args[0], args[1])
 				}
@@ -150,6 +148,15 @@ func BaseSymbolTable() (env *Environment) {
 		},
 	}
 	return env
+}
+
+func castString(arg interface{}) string {
+	switch arg := arg.(type) {
+	case string:
+		return arg
+	default:
+		panic(fmt.Errorf("cannot cast %T to string", arg))
+	}
 }
 
 func functionHashMapGet(args []interface{}) interface{} {
