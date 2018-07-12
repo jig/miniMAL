@@ -145,9 +145,42 @@ func BaseSymbolTable() (env *Environment) {
 			"first":   args1(functionFirst),
 			"last":    args1(functionLast),
 			"nth":     args2(functionNth),
+			"get":     args2(functionHashMapGet),
+			"set":     args3(functionHashMapSet),
 		},
 	}
 	return env
+}
+
+func functionHashMapGet(args []interface{}) interface{} {
+	switch hashMap := args[0].(type) {
+	case map[string]interface{}:
+		key, ok := hashMap[args[1].(string)]
+		if ok {
+			return key
+		}
+		return nil
+	default:
+		panic(fmt.Errorf("get requires a map"))
+	}
+}
+
+func dupMap(m map[string]interface{}) (rm map[string]interface{}) {
+	for k, v := range m {
+		rm[k] = v
+	}
+	return
+}
+
+func functionHashMapSet(args []interface{}) interface{} {
+	switch hashMap := args[0].(type) {
+	case map[string]interface{}:
+		result := dupMap(hashMap)
+		result[args[1].(string)] = args[2]
+		return result
+	default:
+		panic(fmt.Errorf("get requires a map"))
+	}
 }
 
 func functionFirst(args []interface{}) interface{} {
@@ -291,6 +324,15 @@ func args2(f func(args []interface{}) interface{}) func(args []interface{}) inte
 	return func(args []interface{}) interface{} {
 		if len(args) != 2 {
 			panic(fmt.Errorf("wrong number of arguments (%d instead of 2)", len(args)))
+		}
+		return f(args)
+	}
+}
+
+func args3(f func(args []interface{}) interface{}) func(args []interface{}) interface{} {
+	return func(args []interface{}) interface{} {
+		if len(args) != 3 {
+			panic(fmt.Errorf("wrong number of arguments (%d instead of 3)", len(args)))
 		}
 		return f(args)
 	}
